@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "rules": {
+    "wip_limit": 1,
+    "allowed_states": [
+      "active",
+      "blocked",
+      "not_started",
+      "passing"
+    ],
+    "passing_requires": "The verification command succeeds and evidence is recorded."
+  },
+  "features": [
+    {
+      "id": "H01",
+      "behavior": "A fresh agent can understand RepoPilot scope, commands, current state, and next work from repository files alone",
+      "verification": "python harness/validate.py",
+      "state": "passing",
+      "evidence": "2026-05-23: python scripts/check.py passed; Python compile check, 10 unittest smoke tests, and harness validation succeeded."
+    },
+    {
+      "id": "A01",
+      "behavior": "Create the production-oriented RepoPilot project architecture skeleton with CLI/API entrypoints, module boundaries, safety defaults, docs, and validation",
+      "verification": "python scripts/check.py",
+      "state": "passing",
+      "evidence": "2026-05-23: python scripts/check.py passed; ruff, mypy, pytest, and harness validation succeeded."
+    },
+    {
+      "id": "F01",
+      "behavior": "Normalize a GitHub Issue URL or raw bug description into a structured repair request",
+      "verification": "python -m pytest tests/test_issue_intake.py -q",
+      "state": "passing",
+      "evidence": "2026-05-23: python scripts/check.py passed; F01 fixture-backed issue intake tests are included in 19 passing pytest tests."
+    },
+    {
+      "id": "A02",
+      "behavior": "Align RepoPilot with the layered run manager, workflow, workspace, agent, tool, artifact, observability, and evaluation architecture",
+      "verification": "python scripts/check.py",
+      "state": "passing",
+      "evidence": "2026-05-23: python scripts/check.py passed; ruff, mypy, 27 pytest tests, and harness validation succeeded."
+    },
+    {
+      "id": "F02",
+      "behavior": "Inspect a target repository and build searchable code context for planning",
+      "verification": "python -m pytest tests/test_repo_analysis.py -q",
+      "state": "passing",
+      "evidence": "2026-05-23: python scripts/check.py passed; F02 repository analysis and local retrieval tests are included in 29 passing pytest tests."
+    },
+    {
+      "id": "F03",
+      "behavior": "Produce a bounded dry-run repair workflow with plan, noop diff, test report, risk assessment, and PR description artifacts",
+      "verification": "python -m pytest tests/test_repair_workflow.py -q",
+      "state": "passing",
+      "evidence": "2026-05-24: python scripts/check.py passed; F03 dry-run repair workflow tests are included in 30 passing pytest tests."
+    },
+    {
+      "id": "F04",
+      "behavior": "Add approval-gated patch and test execution boundaries that can later run inside the sandbox",
+      "verification": "python -m pytest tests/unit -q",
+      "state": "passing",
+      "evidence": "2026-05-24: python scripts/check.py passed; F04 approval-gated patch/test boundary tests are included in 37 passing pytest tests."
+    },
+    {
+      "id": "F05",
+      "behavior": "Introduce sandbox execution planning with explicit dry-run versus approved execution modes",
+      "verification": "python -m pytest tests/unit -q",
+      "state": "passing",
+      "evidence": "2026-05-27: python scripts/check.py passed; F05 sandbox execution planning tests are included in 55 passing pytest tests."
+    },
+    {
+      "id": "F06",
+      "behavior": "Replace NoopSandboxExecutor with real subprocess execution (timeout, output capture, error handling)",
+      "verification": "python -m pytest tests/unit -q",
+      "state": "passing",
+      "evidence": "2026-05-27: python scripts/check.py passed; F06 subprocess sandbox executor tests are included in 65 passing pytest tests."
+    },
+    {
+      "id": "F07",
+      "behavior": "Replace NoopFileTool with real file read, write, and list operations",
+      "verification": "python -m pytest tests/unit -q",
+      "state": "passing",
+      "evidence": "2026-05-27: python scripts/check.py passed; RealFileTool with read/write/list actions."
+    },
+    {
+      "id": "F08",
+      "behavior": "Replace NoopSearchTool with real keyword and grep-based code search",
+      "verification": "python -m pytest tests/unit -q",
+      "state": "passing",
+      "evidence": "2026-05-27: python scripts/check.py passed; RealSearchTool with keyword and grep actions."
+    },
+    {
+      "id": "F09",
+      "behavior": "Replace NoopPatchTool with real unified diff application via patch command",
+      "verification": "python -m pytest tests/unit -q",
+      "state": "passing",
+      "evidence": "2026-05-27: python scripts/check.py passed; RealPatchTool applies diffs with approval gate."
+    },
+    {
+      "id": "F10",
+      "behavior": "Replace NoopGitTool with real git operations (diff, status, log, add, commit)",
+      "verification": "python -m pytest tests/unit -q",
+      "state": "passing",
+      "evidence": "2026-05-27: python scripts/check.py passed; RealGitTool with read-only and approval-gated write operations."
+    },
+    {
+      "id": "F11",
+      "behavior": "Real repair orchestrator driving INTAKE through REPORT with real tool execution",
+      "verification": "python -m pytest tests/unit -q",
+      "state": "passing",
+      "evidence": "2026-05-27: python scripts/check.py passed; RealRepairWorkflowOrchestrator with full stage pipeline."
+    },
+    {
+      "id": "F12",
+      "behavior": "Test failure reflection and retry loop with bounded retries",
+      "verification": "python -m pytest tests/unit -q",
+      "state": "passing",
+      "evidence": "2026-05-27: python scripts/check.py passed; Retry loop built into orchestrator TEST+REFLECT stages."
+    },
+    {
+      "id": "F13",
+      "behavior": "Persist repair artifacts (diff, test report, PR description) to disk",
+      "verification": "python -m pytest tests/unit -q",
+      "state": "passing",
+      "evidence": "2026-05-27: python scripts/check.py passed; ArtifactsWriter.save_to_disk writes files to output directory."
+    },
+    {
+      "id": "F14",
+      "behavior": "CLI run subcommand for end-to-end repair workflow execution",
+      "verification": "python -m pytest tests/unit -q",
+      "state": "passing",
+      "evidence": "2026-05-27: python scripts/check.py passed; repopilot run command drives full pipeline with artifact output."
+    }
+  ]
+}

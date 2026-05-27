@@ -1,0 +1,112 @@
+"""Patch tool with real patch application."""
+
+from __future__ import annotations
+
+import subprocess
+import tempfile
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, Field, ValidationError
+
+from repopilot.approvals import ApprovalSubject, StrictApprovalPolicy
+from repopilot.models import ExecutionMode
+
+from .contracts import ToolCategory, ToolErrorCode, ToolResult
+
+
+class PatchProposal(BaseModel):
+    """A proposed patch that has not been applied."""
+
+    run_id: str
+    target_files: list[str] = Field(min_length=1)
+    unified_diff: str = Field(min_length=1)
+    rationale: str
+    approved: bool = False
+    execution_mode: ExecutionMode = ExecutionMode.APPROVED
+    working_directory: str = "."
+
+
+class PatchExecutionResult(BaseModel):
+    """Structured result for patch execution."""
+
+    applied: bool
+    changed_files: list[str] = Field(default_factory=list)
+    message: str
+
+
+class RealPatchTool:
+    """Approval-gated patch tool that applies unified diffs."""
+
+    name = "patch"
+    category = ToolCategory.PATCH
+    approval_required = True
+
+    def run(self, arguments: Mapping[str, Any]) -> ToolResult:
+        try:
+            proposal = PatchProposal.model_validate(arguments)
+        except ValidationError as exc:
+            return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
+
+        decision = StrictApprovalPolicy().check(ApprovalSubject.PATCH, proposal.approved)
+        if not decision.approved:
+            return ToolResult.requires_approval(decision.reason)
+
+        if proposal.execution_mode == ExecutionMode.DRY_RUN:
+            result = PatchExecutionResult(
+                applied=False,
+                changed_files=proposal.target_files,
+                message=f"Patch dry run planned for: {', '.join(proposal.target_files)}",
+            )
+            return ToolResult.success(data=result.model_dump(), message=result.message)
+
+        return self._apply_patch(proposal)
+
+    def _apply_patch(self, proposal: PatchProposal) -> ToolResult:
+        cwd = Path(proposal.working_directory).resolve()
+        if not cwd.is_dir():
+            return ToolResult.failure(
+                ToolErrorCode.NOT_FOUND, f"Working directory not found: {cwd}"
+            )
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".patch", delete=False, encoding="utf-8"
+        ) as tmp:
+            tmp.write(proposal.unified_diff)
+            tmp_path = tmp.name
+
+        try:
+            completed = subprocess.run(
+                ["patch", "-p1", "--input", tmp_path, "--directory", str(cwd)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except FileNotFoundError:
+            return ToolResult.failure(
+                ToolErrorCode.UNAVAILABLE, "patch command not found on system"
+            )
+        except subprocess.TimeoutExpired:
+            return ToolResult.failure(ToolErrorCode.TIMEOUT, "Patch application timed out")
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+        if completed.returncode == 0:
+            result = PatchExecutionResult(
+                applied=True,
+                changed_files=proposal.target_files,
+                message=f"Patch applied successfully to {len(proposal.target_files)} files",
+            )
+            return ToolResult.success(data=result.model_dump(), message=result.message)
+
+        result = PatchExecutionResult(
+            applied=False,
+            changed_files=[],
+            message=f"Patch failed: {completed.stderr.strip()}",
+        )
+        return ToolResult.failure(ToolErrorCode.UNKNOWN, result.message)
+
+
+# Backward-compatible alias
+NoopPatchTool = RealPatchTool
