@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 @dataclass(frozen=True)
@@ -69,7 +69,7 @@ class RepairDryRunResult:
     retry_count: int
     max_retries: int
     approval_required: bool
-    workflow_status: str
+    workflow_status: Literal["dry_run_completed"]
 
 
 class ExecutionMode(StrEnum):
@@ -112,7 +112,7 @@ class ExecutionPlan(BaseModel):
 
     run_id: str
     description: str = ""
-    commands: list[CommandPlan] = []
+    commands: list[CommandPlan] = Field(default_factory=list)
 
     @property
     def mode(self) -> ExecutionMode:

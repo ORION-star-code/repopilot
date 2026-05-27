@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -17,7 +17,7 @@ class GitHubIssue(BaseModel):
     labels: list[str] = Field(default_factory=list)
     author: str | None = None
     url: str | None = None
-    state: str = "open"
+    state: Literal["open", "closed"] = "open"
     created_at: str | None = None
     updated_at: str | None = None
 

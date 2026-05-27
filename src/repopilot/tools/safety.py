@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Git arguments that can execute arbitrary commands or override config
 _DANGEROUS_GIT_FLAGS = {
@@ -28,6 +31,10 @@ def contain_path(requested: str, workspace_root: Path) -> Path:
     root = workspace_root.resolve()
     resolved = (root / requested).resolve()
     if not resolved.is_relative_to(root):
+        logger.warning(
+            "Path traversal attempt blocked: requested=%r resolved=%s root=%s",
+            requested, resolved, root,
+        )
         raise ValueError(
             f"Path {requested!r} escapes workspace root {root}"
         )
@@ -42,6 +49,9 @@ def sanitize_git_args(args: list[str]) -> list[str]:
     """
     for arg in args:
         if arg in _DANGEROUS_GIT_FLAGS:
+            raise ValueError(f"Dangerous git argument rejected: {arg}")
+        # Match --flag=value variants (e.g. --exec=malicious)
+        if "=" in arg and arg.split("=", 1)[0] in _DANGEROUS_GIT_FLAGS:
             raise ValueError(f"Dangerous git argument rejected: {arg}")
         if _SHELL_META_PATTERN.search(arg):
             raise ValueError(

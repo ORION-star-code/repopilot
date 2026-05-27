@@ -6,15 +6,18 @@ import argparse
 import json
 import logging
 import shlex
+import sys
 import uuid
 from dataclasses import asdict
 from pathlib import Path
 
 from .artifacts.writer import ArtifactBundle, ArtifactsWriter
+from .config import get_settings
 from .issue_fetchers import FixtureIssueFetcher
 from .issue_intake import normalize_issue_input
 from .repair_workflow import create_repair_plan, run_dry_repair_workflow
 from .repo_analysis import inspect_repository
+from .runs.manager import RunStatus
 from .workflows.orchestrator import RealRepairWorkflowOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -27,6 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="repopilot",
         description="Issue-driven repository repair assistant.",
     )
+    parser.add_argument("--version", action="version", version="%(prog)s 0.1.0")
     subcommands = parser.add_subparsers(dest="command")
 
     intake = subcommands.add_parser("intake", help="Normalize an issue URL or bug description.")
@@ -79,6 +83,9 @@ def _truncate(text: str, limit: int = OUTPUT_TRUNCATION_LIMIT) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    settings = get_settings()
+    logging.basicConfig(level=settings.log_level, format="%(name)s %(levelname)s: %(message)s")
+
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -89,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(asdict(request), indent=2))
             return 0
         except (ValueError, OSError) as exc:
-            print(f"Error: {exc}")
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
 
     if args.command == "inspect":
@@ -98,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(asdict(snapshot), indent=2))
             return 0
         except (FileNotFoundError, NotADirectoryError, OSError) as exc:
-            print(f"Error: {exc}")
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
 
     if args.command == "plan":
@@ -109,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(asdict(plan), indent=2))
             return 0
         except (ValueError, FileNotFoundError, NotADirectoryError, OSError) as exc:
-            print(f"Error: {exc}")
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
 
     if args.command == "dry-run":
@@ -121,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(asdict(result), indent=2))
             return 0
         except (ValueError, FileNotFoundError, NotADirectoryError, OSError) as exc:
-            print(f"Error: {exc}")
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
 
     if args.command == "run":
@@ -179,13 +186,13 @@ def _run_repair(args: argparse.Namespace) -> int:
             print(_truncate(result.artifacts.test_report))
             print()
             print("=== Risk Assessment ===")
-            print(result.artifacts.risk_assessment)
+            print(_truncate(result.artifacts.risk_assessment))
             print()
             print("=== PR Description ===")
             print(_truncate(result.artifacts.pr_description))
 
-        return 0 if result.state.status == "succeeded" else 1
+        return 0 if result.state.status == RunStatus.SUCCEEDED else 1
 
     except (ValueError, FileNotFoundError, NotADirectoryError, OSError) as exc:
-        print(f"Error: {exc}")
+        print(f"Error: {exc}", file=sys.stderr)
         return 1

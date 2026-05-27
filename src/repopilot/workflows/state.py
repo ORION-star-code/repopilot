@@ -6,6 +6,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from repopilot.runs.manager import RunStatus
+
 
 class RepairStage(StrEnum):
     INTAKE = "intake"
@@ -18,24 +20,11 @@ class RepairStage(StrEnum):
     REPORT = "report"
 
 
-class RepairRunStatus(StrEnum):
-    PENDING = "pending"
-    RUNNING = "running"
-    WAITING_FOR_APPROVAL = "waiting_for_approval"
-    FAILED = "failed"
-    SUCCEEDED = "succeeded"
+# Backward-compatible alias — canonical type is RunStatus
+RepairRunStatus = RunStatus
 
 
-STAGE_ORDER: tuple[RepairStage, ...] = (
-    RepairStage.INTAKE,
-    RepairStage.ANALYZE,
-    RepairStage.RETRIEVE,
-    RepairStage.PLAN,
-    RepairStage.PATCH,
-    RepairStage.TEST,
-    RepairStage.REFLECT,
-    RepairStage.REPORT,
-)
+STAGE_ORDER: tuple[RepairStage, ...] = tuple(RepairStage)
 
 
 class RepairWorkflowState(BaseModel):

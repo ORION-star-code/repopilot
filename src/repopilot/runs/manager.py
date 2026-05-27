@@ -9,6 +9,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from repopilot.state_machine import StateMachine
+
 
 class RunStatus(StrEnum):
     """Lifecycle status for a repair run."""
@@ -21,8 +23,7 @@ class RunStatus(StrEnum):
     CANCELED = "canceled"
 
 
-# Valid status transitions
-_VALID_TRANSITIONS: dict[RunStatus, set[RunStatus]] = {
+_STATUS_MACHINE = StateMachine({
     RunStatus.PENDING: {RunStatus.RUNNING, RunStatus.CANCELED},
     RunStatus.RUNNING: {
         RunStatus.WAITING_FOR_APPROVAL,
@@ -34,7 +35,7 @@ _VALID_TRANSITIONS: dict[RunStatus, set[RunStatus]] = {
     RunStatus.FAILED: set(),  # terminal
     RunStatus.SUCCEEDED: set(),  # terminal
     RunStatus.CANCELED: set(),  # terminal
-}
+})
 
 
 class RunRecord(BaseModel):
@@ -85,12 +86,7 @@ class RunManager:
         if record is None:
             raise KeyError(f"Unknown run id: {run_id}")
 
-        allowed = _VALID_TRANSITIONS.get(record.status, set())
-        if status not in allowed:
-            raise ValueError(
-                f"Invalid status transition: {record.status} -> {status}. "
-                f"Allowed: {', '.join(s.value for s in allowed) or 'none (terminal)'}"
-            )
+        _STATUS_MACHINE.validate(record.status, status)
 
         updated = record.model_copy(update={"status": status, "updated_at": self._clock()})
         self._records[run_id] = updated

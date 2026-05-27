@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+from pathlib import Path
 from typing import Protocol
 
 from pydantic import BaseModel, Field
@@ -73,6 +74,19 @@ def _sanitize_env() -> dict[str, str]:
 class SubprocessSandboxExecutor:
     """Executor that runs commands via subprocess with safety constraints."""
 
+    def __init__(self, workspace_root: Path | None = None) -> None:
+        self._workspace_root = workspace_root or Path.cwd()
+
+    def _validate_cwd(self, cwd: str | None) -> str | None:
+        """Validate that cwd stays within the workspace root."""
+        if cwd is None:
+            return None
+        root = self._workspace_root.resolve()
+        resolved = (root / cwd).resolve()
+        if not resolved.is_relative_to(root):
+            raise ValueError(f"cwd {cwd!r} escapes workspace root {root}")
+        return str(resolved)
+
     def run(
         self,
         request: CommandRequest,
@@ -84,9 +98,13 @@ class SubprocessSandboxExecutor:
                 stdout=f"DRY RUN: would execute {' '.join(request.command)}",
             )
         try:
+            validated_cwd = self._validate_cwd(request.cwd)
+        except ValueError as exc:
+            return CommandResult(exit_code=126, stderr=str(exc))
+        try:
             completed = subprocess.run(
                 request.command,
-                cwd=request.cwd,
+                cwd=validated_cwd,
                 capture_output=True,
                 text=True,
                 timeout=request.timeout_seconds,

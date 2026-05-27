@@ -2,8 +2,8 @@
 
 ## Current Status
 - Project: RepoPilot
-- Latest checkpoint: code optimization complete (Phase 1-5)
-- Last validation: 2026-05-27, `python scripts/check.py` passed — 65 tests, ruff, mypy, harness all green
+- Latest checkpoint: second-round optimization complete (Phase 1-5)
+- Last validation: 2026-05-27, `python scripts/check.py` passed — 114 tests, ruff, mypy, harness all green
 - Current WIP: (optimization complete)
 
 ## Completed
@@ -27,11 +27,8 @@
 - [x] F12 passed: Test failure reflection and retry loop (built into orchestrator)
 - [x] F13 passed: Artifact writer persistence (save diff, test report, PR description to disk)
 - [x] F14 passed: CLI `run` subcommand for end-to-end repair execution
-- [x] Phase 1 security hardening: path containment, git arg sanitization, approval audit log, env sanitization
-- [x] Phase 2 correctness: ReDoS protection, patch dry-run validation, artifact atomic writes
-- [x] Phase 3 robustness: CLI error handling, orchestrator stage validation, ToolResult semantics, retrieval scoring
-- [x] Phase 4 data model: config Literal constraints, repo_analysis expansion, RunManager state machine, logging
-- [x] Phase 5 architecture: agent Severity enum, RETRIEVE role, GitHub sentinel, observability TraceCollector, evaluation metrics
+- [x] O01 first optimization: security hardening, correctness, robustness, data model, architecture cleanup (65 tests)
+- [x] O02 second optimization: security boundary completion, architecture dedup, test coverage, observability integration (114 tests)
 
 ## In Progress
 - (none — optimization complete)

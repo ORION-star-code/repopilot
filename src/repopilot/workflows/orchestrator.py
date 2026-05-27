@@ -13,21 +13,23 @@ from repopilot.models import (
     RepairRequest,
     RepoSnapshot,
 )
+from repopilot.observability.events import TraceCollector, TraceEvent, TraceEventType, TraceSeverity
 from repopilot.repair_workflow import create_repair_plan, empty_artifacts
 from repopilot.runs import RunRecord
+from repopilot.runs.manager import RunStatus
 from repopilot.sandbox import CommandRequest, SubprocessSandboxExecutor
+from repopilot.state_machine import StateMachine
 from repopilot.tools.file import RealFileTool
 from repopilot.tools.search import RealSearchTool
 
-from .state import RepairRunStatus, RepairStage, RepairWorkflowState
+from .state import RepairStage, RepairWorkflowState
 
 logger = logging.getLogger(__name__)
 
 _ERROR_OUTPUT_LIMIT = 500
 _SEARCH_BODY_LIMIT = 200
 
-# Valid stage transitions
-_VALID_TRANSITIONS: dict[RepairStage, set[RepairStage]] = {
+_STAGE_MACHINE = StateMachine({
     RepairStage.INTAKE: {RepairStage.ANALYZE},
     RepairStage.ANALYZE: {RepairStage.RETRIEVE},
     RepairStage.RETRIEVE: {RepairStage.PLAN},
@@ -36,7 +38,7 @@ _VALID_TRANSITIONS: dict[RepairStage, set[RepairStage]] = {
     RepairStage.TEST: {RepairStage.REFLECT, RepairStage.REPORT},
     RepairStage.REFLECT: {RepairStage.PATCH},
     RepairStage.REPORT: set(),
-}
+})
 
 
 class RepairWorkflowOrchestrator(Protocol):
@@ -54,7 +56,7 @@ class NoopRepairWorkflowOrchestrator:
         return RepairWorkflowState(
             run_id=run.run_id,
             stage=RepairStage.INTAKE,
-            status=RepairRunStatus.RUNNING,
+            status=RunStatus.RUNNING,
             history=[RepairStage.INTAKE],
         )
 
@@ -77,6 +79,7 @@ class RealRepairWorkflowOrchestrator:
         *,
         validation_command: list[str] | None = None,
         max_retries: int = 2,
+        collector: TraceCollector | None = None,
     ) -> None:
         self._validation_command = validation_command or [
             "python",
@@ -88,6 +91,7 @@ class RealRepairWorkflowOrchestrator:
         self._file_tool = RealFileTool()
         self._search_tool = RealSearchTool()
         self._sandbox = SubprocessSandboxExecutor()
+        self._collector = collector
 
     def run(
         self,
@@ -144,18 +148,24 @@ class RealRepairWorkflowOrchestrator:
                 break
 
             state = state.model_copy(update={"retry_count": state.retry_count + 1})
+            if self._collector:
+                self._collector.record(TraceEvent(
+                    run_id=state.run_id,
+                    event_type=TraceEventType.RETRY,
+                    message=f"Test failed, retry {state.retry_count}/{state.max_retries}",
+                    severity=TraceSeverity.WARNING,
+                    metadata={"retry_count": state.retry_count},
+                ))
             if state.retry_count <= state.max_retries:
                 state = self._advance(state, RepairStage.REFLECT)
-                state.last_error = test_output[:_ERROR_OUTPUT_LIMIT]
+                state = state.model_copy(update={"last_error": test_output[:_ERROR_OUTPUT_LIMIT]})
                 # Loop back to PATCH for retry
                 state = self._advance(state, RepairStage.PATCH)
 
         # REPORT
         state = self._advance(state, RepairStage.REPORT)
-        if test_passed:
-            state.status = RepairRunStatus.SUCCEEDED
-        else:
-            state.status = RepairRunStatus.FAILED
+        final_status = RunStatus.SUCCEEDED if test_passed else RunStatus.FAILED
+        state = state.model_copy(update={"status": final_status})
 
         # Build artifacts
         artifacts = RepairArtifacts(
@@ -175,16 +185,20 @@ class RealRepairWorkflowOrchestrator:
     def _advance(
         self, state: RepairWorkflowState, stage: RepairStage
     ) -> RepairWorkflowState:
-        allowed = _VALID_TRANSITIONS.get(state.stage, set())
-        if stage not in allowed:
-            raise ValueError(
-                f"Invalid stage transition: {state.stage} -> {stage}. "
-                f"Allowed: {', '.join(s.value for s in allowed) or 'none (terminal)'}"
-            )
-        state.stage = stage
-        state.status = RepairRunStatus.RUNNING
-        state.history.append(stage)
-        return state
+        _STAGE_MACHINE.validate(state.stage, stage)
+        new_state = state.model_copy(update={
+            "stage": stage,
+            "status": RunStatus.RUNNING,
+            "history": [*state.history, stage],
+        })
+        if self._collector:
+            self._collector.record(TraceEvent(
+                run_id=state.run_id,
+                event_type=TraceEventType.STAGE_TRANSITION,
+                message=f"{state.stage} -> {stage}",
+                metadata={"from": state.stage.value, "to": stage.value},
+            ))
+        return new_state
 
     def _assess_risk(self, test_passed: bool, retry_count: int) -> str:
         if test_passed and retry_count == 0:

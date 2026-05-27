@@ -15,8 +15,11 @@ from repopilot.approvals import ApprovalSubject, StrictApprovalPolicy
 from repopilot.models import ExecutionMode
 
 from .contracts import ToolCategory, ToolErrorCode, ToolResult
+from .safety import contain_path
 
 logger = logging.getLogger(__name__)
+
+_PATCH_TIMEOUT_SECONDS = 30
 
 
 class PatchProposal(BaseModel):
@@ -47,13 +50,21 @@ class RealPatchTool:
     category = ToolCategory.PATCH
     approval_required = True
 
+    def __init__(
+        self,
+        workspace_root: Path | None = None,
+        policy: StrictApprovalPolicy | None = None,
+    ) -> None:
+        self._workspace_root = workspace_root or Path.cwd()
+        self._policy = policy or StrictApprovalPolicy()
+
     def run(self, arguments: Mapping[str, Any]) -> ToolResult:
         try:
             proposal = PatchProposal.model_validate(arguments)
         except ValidationError as exc:
             return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
 
-        decision = StrictApprovalPolicy().check(ApprovalSubject.PATCH, proposal.approved)
+        decision = self._policy.check(ApprovalSubject.PATCH, proposal.approved)
         if not decision.approved:
             return ToolResult.requires_approval(decision.reason)
 
@@ -68,7 +79,10 @@ class RealPatchTool:
         return self._apply_patch(proposal)
 
     def _apply_patch(self, proposal: PatchProposal) -> ToolResult:
-        cwd = Path(proposal.working_directory).resolve()
+        try:
+            cwd = contain_path(proposal.working_directory, self._workspace_root)
+        except ValueError as exc:
+            return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
         if not cwd.is_dir():
             return ToolResult.failure(
                 ToolErrorCode.NOT_FOUND, f"Working directory not found: {cwd}"
@@ -94,7 +108,7 @@ class RealPatchTool:
                 ],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=_PATCH_TIMEOUT_SECONDS,
             )
             if dry_run.returncode != 0:
                 return ToolResult.failure(
@@ -114,7 +128,7 @@ class RealPatchTool:
                 ],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=_PATCH_TIMEOUT_SECONDS,
             )
         except FileNotFoundError:
             return ToolResult.failure(

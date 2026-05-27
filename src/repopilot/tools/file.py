@@ -25,9 +25,9 @@ MAX_READ_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 class FileReadRequest(BaseModel):
     """Request to read a file."""
 
-    path: str
-    offset: int = 0
-    limit: int = 0  # 0 means read all
+    path: str = Field(min_length=1)
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=0, ge=0)  # 0 means read all
 
 
 class FileWriteRequest(BaseModel):
@@ -54,8 +54,13 @@ class RealFileTool:
     category = ToolCategory.FILE
     approval_required = False
 
-    def __init__(self, workspace_root: Path | None = None) -> None:
+    def __init__(
+        self,
+        workspace_root: Path | None = None,
+        policy: StrictApprovalPolicy | None = None,
+    ) -> None:
         self._workspace_root = workspace_root or Path.cwd()
+        self._policy = policy or StrictApprovalPolicy()
 
     def run(self, arguments: Mapping[str, Any]) -> ToolResult:
         action = arguments.get("action", "")
@@ -125,7 +130,7 @@ class RealFileTool:
         except ValueError as exc:
             return ToolResult.failure(ToolErrorCode.PERMISSION_DENIED, str(exc))
 
-        decision = StrictApprovalPolicy().check(ApprovalSubject.PATCH, req.approved)
+        decision = self._policy.check(ApprovalSubject.PATCH, req.approved)
         if not decision.approved:
             return ToolResult.requires_approval(decision.reason)
 

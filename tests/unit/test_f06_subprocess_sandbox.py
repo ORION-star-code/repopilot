@@ -1,8 +1,5 @@
 """F06: Real subprocess sandbox executor."""
 
-import os
-import tempfile
-
 from repopilot.models import ExecutionMode
 from repopilot.sandbox import CommandRequest, SubprocessSandboxExecutor
 from repopilot.tools import NoopTestRunnerTool, ToolErrorCode
@@ -63,15 +60,15 @@ def test_subprocess_sandbox_dry_run_returns_simulated():
 
 
 def test_subprocess_sandbox_with_cwd():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        request = CommandRequest(
-            command=["python", "-c", "import os; print(os.getcwd())"],
-            cwd=tmpdir,
-        )
-        result = SubprocessSandboxExecutor().run(request)
+    # Use a relative path within the workspace to pass contain_path validation
+    request = CommandRequest(
+        command=["python", "-c", "import os; print(os.getcwd())"],
+        cwd="tests",
+    )
+    result = SubprocessSandboxExecutor().run(request)
 
-        assert result.exit_code == 0
-        assert os.path.normpath(tmpdir) in os.path.normpath(result.stdout.strip())
+    assert result.exit_code == 0
+    assert "tests" in result.stdout.strip().replace("\\", "/").lower()
 
 
 # --- Test runner integration ---

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -14,6 +13,7 @@ from pydantic import BaseModel, Field, ValidationError
 from repopilot.retrieval.contracts import LocalCodeRetriever, RetrievalQuery
 
 from .contracts import ToolCategory, ToolErrorCode, ToolResult
+from .safety import contain_path
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,8 @@ class RealSearchTool:
     category = ToolCategory.SEARCH
     approval_required = False
 
-    def __init__(self) -> None:
+    def __init__(self, workspace_root: Path | None = None) -> None:
+        self._workspace_root = workspace_root or Path.cwd()
         self._retriever = LocalCodeRetriever()
 
     def run(self, arguments: Mapping[str, Any]) -> ToolResult:
@@ -70,17 +71,25 @@ class RealSearchTool:
         except ValidationError as exc:
             return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
 
-        if not os.path.isdir(req.repository_root):
+        try:
+            validated_root = contain_path(req.repository_root, self._workspace_root)
+        except ValueError as exc:
+            return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
+
+        if not validated_root.is_dir():
             return ToolResult.failure(
                 ToolErrorCode.NOT_FOUND, f"Directory not found: {req.repository_root}"
             )
 
         query = RetrievalQuery(
-            repository_root=req.repository_root,
+            repository_root=str(validated_root),
             text=req.query,
             limit=req.limit,
         )
-        results = self._retriever.search(query)
+        try:
+            results = self._retriever.search(query)
+        except (OSError, ValueError) as exc:
+            return ToolResult.failure(ToolErrorCode.UNKNOWN, f"Search failed: {exc}")
         return ToolResult.success(
             data={
                 "results": [r.model_dump() for r in results],
@@ -95,7 +104,10 @@ class RealSearchTool:
         except ValidationError as exc:
             return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
 
-        root = Path(req.repository_root)
+        try:
+            root = contain_path(req.repository_root, self._workspace_root)
+        except ValueError as exc:
+            return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
         if not root.is_dir():
             return ToolResult.failure(
                 ToolErrorCode.NOT_FOUND, f"Directory not found: {req.repository_root}"
@@ -124,7 +136,7 @@ class RealSearchTool:
 
         matches: list[dict[str, Any]] = []
         for filepath in root.rglob(req.glob):
-            if not filepath.is_file():
+            if not filepath.is_file() or filepath.is_symlink():
                 continue
             # Skip ignored directories
             if any(part in _IGNORED_DIR_NAMES for part in filepath.parts):

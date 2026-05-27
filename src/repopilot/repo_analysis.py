@@ -205,8 +205,12 @@ def _is_test_file(lower_relative: str, lower_name: str) -> bool:
 
 def _line_count(path: Path) -> int:
     try:
-        return len(path.read_text(encoding="utf-8").splitlines())
-    except (UnicodeDecodeError, OSError):
+        count = 0
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for _ in f:
+                count += 1
+        return count
+    except OSError:
         return 0
 
 

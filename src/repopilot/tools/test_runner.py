@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
@@ -46,13 +47,21 @@ class NoopTestRunnerTool:
     category = ToolCategory.TEST
     approval_required = True
 
+    def __init__(
+        self,
+        workspace_root: Path | None = None,
+        policy: StrictApprovalPolicy | None = None,
+    ) -> None:
+        self._workspace_root = workspace_root or Path.cwd()
+        self._policy = policy or StrictApprovalPolicy()
+
     def run(self, arguments: Mapping[str, Any]) -> ToolResult:
         try:
             request = TestExecutionRequest.model_validate(arguments)
         except ValidationError as exc:
             return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
 
-        decision = StrictApprovalPolicy().check(ApprovalSubject.TEST_EXECUTION, request.approved)
+        decision = self._policy.check(ApprovalSubject.TEST_EXECUTION, request.approved)
         if not decision.approved:
             return ToolResult.requires_approval(decision.reason)
 
@@ -65,7 +74,7 @@ class NoopTestRunnerTool:
             )
             return ToolResult.success(data=result.model_dump(), message=result.message)
 
-        sandbox = SubprocessSandboxExecutor()
+        sandbox = SubprocessSandboxExecutor(workspace_root=self._workspace_root)
         cmd_request = CommandRequest(
             command=request.command,
             cwd=request.cwd,

@@ -8,12 +8,12 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from repopilot.approvals import ApprovalSubject, StrictApprovalPolicy
 
 from .contracts import ToolCategory, ToolErrorCode, ToolResult
-from .safety import sanitize_git_args
+from .safety import contain_path, sanitize_git_args
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ WRITE_ACTIONS = {
     "rebase",
 }
 ALL_ACTIONS = READ_ONLY_ACTIONS | WRITE_ACTIONS
+_GIT_TIMEOUT_SECONDS = 30
 
 
 class GitRequest(BaseModel):
@@ -38,8 +39,8 @@ class GitRequest(BaseModel):
 
     action: str
     repository: str = "."
-    args: list[str] = []
-    message: str = ""
+    args: list[str] = Field(default_factory=list)
+    message: str = Field(default="", max_length=10000)
     approved: bool = False
 
 
@@ -49,6 +50,14 @@ class RealGitTool:
     name = "git"
     category = ToolCategory.GIT
     approval_required = True
+
+    def __init__(
+        self,
+        workspace_root: Path | None = None,
+        policy: StrictApprovalPolicy | None = None,
+    ) -> None:
+        self._workspace_root = workspace_root or Path.cwd()
+        self._policy = policy or StrictApprovalPolicy()
 
     def run(self, arguments: Mapping[str, Any]) -> ToolResult:
         try:
@@ -68,14 +77,17 @@ class RealGitTool:
         except ValueError as exc:
             return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
 
-        repo = Path(req.repository).resolve()
+        try:
+            repo = contain_path(req.repository, self._workspace_root)
+        except ValueError as exc:
+            return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
         if not repo.is_dir():
             return ToolResult.failure(
                 ToolErrorCode.NOT_FOUND, f"Repository not found: {repo}"
             )
 
         if req.action in WRITE_ACTIONS:
-            decision = StrictApprovalPolicy().check(ApprovalSubject.GIT, req.approved)
+            decision = self._policy.check(ApprovalSubject.GIT, req.approved)
             if not decision.approved:
                 return ToolResult.requires_approval(decision.reason)
 
@@ -98,7 +110,7 @@ class RealGitTool:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=_GIT_TIMEOUT_SECONDS,
             )
         except FileNotFoundError:
             return ToolResult.failure(

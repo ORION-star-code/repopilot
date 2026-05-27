@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
 from pathlib import Path
 from typing import Protocol
 
@@ -19,7 +18,7 @@ class RetrievalQuery(BaseModel):
 
     repository_root: str
     text: str = Field(min_length=1)
-    limit: int = 10
+    limit: int = Field(default=10, ge=1)
 
     @field_validator("text")
     @classmethod
@@ -33,7 +32,7 @@ class RetrievedContext(BaseModel):
     """One retrieved code context item."""
 
     path: str
-    score: float
+    score: float = Field(ge=0, le=MAX_SCORE)
     snippet: str
     source: str
 
@@ -52,9 +51,8 @@ class NoopRetriever:
         return []
 
 
-@lru_cache(maxsize=256)
 def _read_file_lines(path: str) -> list[str] | None:
-    """Read and cache file lines. Returns None on error."""
+    """Read file lines. Returns None on error."""
     p = Path(path)
     try:
         if p.stat().st_size > MAX_FILE_SIZE_BYTES:
@@ -67,6 +65,19 @@ def _read_file_lines(path: str) -> list[str] | None:
 class LocalCodeRetriever:
     """Deterministic read-only retrieval over inspected repository files."""
 
+    def __init__(self) -> None:
+        self._cache: dict[str, list[str] | None] = {}
+
+    def _read_cached(self, path: str) -> list[str] | None:
+        """Read file with instance-level cache."""
+        if path not in self._cache:
+            self._cache[path] = _read_file_lines(path)
+        return self._cache[path]
+
+    def clear_cache(self) -> None:
+        """Clear the file content cache."""
+        self._cache.clear()
+
     def search(self, query: RetrievalQuery) -> list[RetrievedContext]:
         root = Path(query.repository_root).resolve()
         snapshot = inspect_repository(root)
@@ -77,7 +88,7 @@ class LocalCodeRetriever:
         results: list[RetrievedContext] = []
         for relative in snapshot.files:
             path = root / relative
-            lines = _read_file_lines(str(path))
+            lines = self._read_cached(str(path))
             if lines is None:
                 continue
 
