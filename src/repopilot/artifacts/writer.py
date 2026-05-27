@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
 from repopilot.runs import RunRecord
+from repopilot.tools.safety import contain_path
 
 
 class ArtifactBundle(BaseModel):
@@ -43,10 +46,20 @@ class ArtifactsWriter:
             artifact_refs=list(run.artifact_refs),
         )
 
-    def save_to_disk(self, bundle: ArtifactBundle, output_dir: str) -> list[str]:
+    def save_to_disk(
+        self,
+        bundle: ArtifactBundle,
+        output_dir: str,
+        workspace_root: Path | None = None,
+    ) -> list[str]:
         """Persist artifact bundle to disk. Returns list of written file paths."""
-        out = Path(output_dir)
-        out.mkdir(parents=True, exist_ok=True)
+        root = workspace_root or Path.cwd()
+        try:
+            resolved_dir = contain_path(output_dir, root)
+        except ValueError as exc:
+            raise ValueError(f"Output directory escapes workspace: {exc}") from exc
+
+        resolved_dir.mkdir(parents=True, exist_ok=True)
 
         files = {
             "diff.patch": bundle.diff,
@@ -59,18 +72,47 @@ class ArtifactsWriter:
         for name, content in files.items():
             if not content:
                 continue
-            path = out / name
-            path.write_text(content, encoding="utf-8")
+            path = resolved_dir / name
+            self._atomic_write(path, content)
             written.append(str(path))
 
         # Write summary
-        summary_path = out / "summary.txt"
+        summary_path = resolved_dir / "summary.txt"
         summary_lines = [
             f"Run ID: {bundle.run_id}",
             f"Generated: {bundle.generated_at.isoformat()}",
             f"Artifacts: {len(written)} files",
         ]
-        summary_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
+        self._atomic_write(summary_path, "\n".join(summary_lines) + "\n")
         written.append(str(summary_path))
 
         return written
+
+    @staticmethod
+    def _atomic_write(path: Path, content: str) -> None:
+        """Write content atomically via temp file + os.replace."""
+        try:
+            encoded = content.encode("utf-8")
+        except UnicodeEncodeError:
+            encoded = content.encode("utf-8", errors="replace")
+
+        fd, tmp_path = tempfile.mkstemp(
+            dir=path.parent, suffix=".tmp", prefix=path.stem
+        )
+        try:
+            os.write(fd, encoded)
+            os.close(fd)
+            os.replace(tmp_path, path)
+        except BaseException:
+            os.close(fd) if not _fd_closed(fd) else None
+            Path(tmp_path).unlink(missing_ok=True)
+            raise
+
+
+def _fd_closed(fd: int) -> bool:
+    """Check if a file descriptor is already closed."""
+    try:
+        os.fstat(fd)
+        return False
+    except OSError:
+        return True

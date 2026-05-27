@@ -20,10 +20,10 @@ class RepoAnalysisTest(unittest.TestCase):
 
             snapshot = inspect_repository(root)
 
-        self.assertEqual(snapshot.files, ["src/app.py"])
+        self.assertEqual(snapshot.files, ("src/app.py",))
         self.assertEqual(snapshot.language_counts, {".py": 1})
-        self.assertEqual(snapshot.test_files, [])
-        self.assertEqual(snapshot.entrypoint_files, ["src/app.py"])
+        self.assertEqual(snapshot.test_files, ())
+        self.assertEqual(snapshot.entrypoint_files, ("src/app.py",))
 
     def test_missing_repository_path_fails_clearly(self):
         with self.assertRaises(FileNotFoundError):
@@ -34,18 +34,18 @@ class RepoAnalysisTest(unittest.TestCase):
 
         self.assertEqual(
             snapshot.files,
-            [
-                "pyproject.toml",
+            (
                 "README.md",
+                "pyproject.toml",
                 "src/app.py",
                 "src/auth.py",
                 "tests/auth_checks.py",
-            ],
+            ),
         )
         self.assertEqual(snapshot.language_counts, {".md": 1, ".py": 3, ".toml": 1})
-        self.assertEqual(snapshot.config_files, ["pyproject.toml"])
-        self.assertEqual(snapshot.entrypoint_files, ["src/app.py"])
-        self.assertEqual(snapshot.test_files, ["tests/auth_checks.py"])
+        self.assertEqual(snapshot.config_files, ("pyproject.toml",))
+        self.assertEqual(snapshot.entrypoint_files, ("src/app.py",))
+        self.assertEqual(snapshot.test_files, ("tests/auth_checks.py",))
         self.assertNotIn("node_modules/ignored.js", snapshot.files)
         self.assertNotIn(".git/config", snapshot.files)
 

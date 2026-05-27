@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from .events import TraceEvent, TraceEventType
+from .events import TraceCollector, TraceEvent, TraceEventType, TraceSeverity
 
-__all__ = ["TraceEvent", "TraceEventType"]
+__all__ = ["TraceCollector", "TraceEvent", "TraceEventType", "TraceSeverity"]

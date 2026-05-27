@@ -6,6 +6,7 @@ from .contracts import Tool, ToolCategory, ToolErrorCode, ToolResult
 from .file import NoopFileTool, RealFileTool
 from .git import NoopGitTool, RealGitTool
 from .patch import NoopPatchTool, PatchExecutionResult, PatchProposal, RealPatchTool
+from .safety import contain_path, sanitize_git_args
 from .search import NoopSearchTool, RealSearchTool
 from .test_runner import NoopTestRunnerTool, TestExecutionRequest, TestExecutionResult
 
@@ -27,4 +28,6 @@ __all__ = [
     "ToolCategory",
     "ToolErrorCode",
     "ToolResult",
+    "contain_path",
+    "sanitize_git_args",
 ]

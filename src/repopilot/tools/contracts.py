@@ -16,6 +16,8 @@ class ToolErrorCode(StrEnum):
     APPROVAL_REQUIRED = "approval_required"
     TIMEOUT = "timeout"
     UNAVAILABLE = "unavailable"
+    CONFLICT = "conflict"
+    CANCELLED = "cancelled"
     UNKNOWN = "unknown"
 
 
@@ -54,6 +56,11 @@ class ToolResult(BaseModel):
             message=message,
             approval_required=True,
         )
+
+    @property
+    def pending(self) -> bool:
+        """True when the result is waiting for approval (not a failure)."""
+        return self.approval_required
 
 
 class Tool(Protocol):

@@ -17,22 +17,55 @@ EXCLUDED_DIRS = {
     ".venv",
     "__pycache__",
     "node_modules",
+    ".gradle",
+    ".idea",
+    ".vscode",
+    "dist",
+    "build",
+    "coverage",
+    ".next",
+    ".nuxt",
+    "vendor",
+    "target",
+    "bin",
+    "obj",
+    "htmlcov",
+    ".coverage",
 }
 
 CODE_SUFFIXES = {
+    ".c",
+    ".cpp",
     ".css",
+    ".dart",
     ".go",
+    ".graphql",
+    ".h",
+    ".hpp",
     ".html",
     ".java",
     ".js",
     ".json",
     ".jsx",
+    ".kt",
+    ".lua",
     ".md",
+    ".php",
+    ".proto",
     ".py",
+    ".r",
+    ".rb",
     ".rs",
+    ".scala",
+    ".scss",
+    ".sh",
+    ".sql",
+    ".svelte",
+    ".swift",
     ".toml",
     ".ts",
     ".tsx",
+    ".vue",
     ".yaml",
     ".yml",
 }
@@ -61,6 +94,9 @@ ENTRYPOINT_FILENAMES = {
 
 DOCUMENTATION_SUFFIXES = {".md"}
 
+IMPORTANT_FILES_LIMIT = 20
+MAX_FILES = 50000
+
 
 def inspect_repository(root: str | Path) -> RepoSnapshot:
     """Build a lightweight searchable inventory for a repository path."""
@@ -73,35 +109,53 @@ def inspect_repository(root: str | Path) -> RepoSnapshot:
     files: list[str] = []
     file_details: list[RepoFile] = []
     language_counts: Counter[str] = Counter()
-    for path in sorted(resolved.rglob("*")):
+    count = 0
+
+    # Lazy iteration — no sorted() on the full rglob generator
+    for path in resolved.rglob("*"):
         if not path.is_file() or _is_excluded(path, resolved):
             continue
         if path.suffix.lower() not in CODE_SUFFIXES:
             continue
+
+        count += 1
+        if count > MAX_FILES:
+            break
+
         relative = path.relative_to(resolved).as_posix()
         category = _classify_file(relative, path)
         files.append(relative)
+        try:
+            size = path.stat().st_size
+        except OSError:
+            size = 0
         file_details.append(
             RepoFile(
                 path=relative,
                 suffix=path.suffix.lower() or "<none>",
-                size_bytes=path.stat().st_size,
+                size_bytes=size,
                 line_count=_line_count(path),
                 category=category,
             )
         )
         language_counts[path.suffix.lower() or "<none>"] += 1
 
-    test_files = [detail.path for detail in file_details if detail.category == "test"]
-    config_files = [detail.path for detail in file_details if detail.category == "config"]
-    entrypoint_files = [detail.path for detail in file_details if detail.category == "entrypoint"]
+    # Sort final lists for deterministic output
+    files.sort()
+    file_details.sort(key=lambda d: d.path)
+
+    test_files = tuple(detail.path for detail in file_details if detail.category == "test")
+    config_files = tuple(detail.path for detail in file_details if detail.category == "config")
+    entrypoint_files = tuple(
+        detail.path for detail in file_details if detail.category == "entrypoint"
+    )
     important_files = _important_files(file_details)
 
     return RepoSnapshot(
         root=str(resolved),
-        files=files,
+        files=tuple(files),
         language_counts=dict(sorted(language_counts.items())),
-        file_details=file_details,
+        file_details=tuple(file_details),
         test_files=test_files,
         config_files=config_files,
         entrypoint_files=entrypoint_files,
@@ -152,11 +206,11 @@ def _is_test_file(lower_relative: str, lower_name: str) -> bool:
 def _line_count(path: Path) -> int:
     try:
         return len(path.read_text(encoding="utf-8").splitlines())
-    except UnicodeDecodeError:
+    except (UnicodeDecodeError, OSError):
         return 0
 
 
-def _important_files(file_details: list[RepoFile]) -> list[str]:
+def _important_files(file_details: list[RepoFile]) -> tuple[str, ...]:
     priority = {"config": 0, "entrypoint": 1, "test": 2, "source": 3, "documentation": 4}
     ordered = sorted(
         file_details,
@@ -166,4 +220,4 @@ def _important_files(file_details: list[RepoFile]) -> list[str]:
             detail.path,
         ),
     )
-    return [detail.path for detail in ordered[:20]]
+    return tuple(detail.path for detail in ordered[:IMPORTANT_FILES_LIMIT])

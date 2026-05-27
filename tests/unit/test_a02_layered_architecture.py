@@ -71,6 +71,7 @@ def test_agent_roles_cover_layered_architecture():
         "patch",
         "failure_analyzer",
         "reviewer",
+        "retrieve",
     }
 
 

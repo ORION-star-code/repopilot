@@ -21,6 +21,22 @@ class RunStatus(StrEnum):
     CANCELED = "canceled"
 
 
+# Valid status transitions
+_VALID_TRANSITIONS: dict[RunStatus, set[RunStatus]] = {
+    RunStatus.PENDING: {RunStatus.RUNNING, RunStatus.CANCELED},
+    RunStatus.RUNNING: {
+        RunStatus.WAITING_FOR_APPROVAL,
+        RunStatus.FAILED,
+        RunStatus.SUCCEEDED,
+        RunStatus.CANCELED,
+    },
+    RunStatus.WAITING_FOR_APPROVAL: {RunStatus.RUNNING, RunStatus.CANCELED},
+    RunStatus.FAILED: set(),  # terminal
+    RunStatus.SUCCEEDED: set(),  # terminal
+    RunStatus.CANCELED: set(),  # terminal
+}
+
+
 class RunRecord(BaseModel):
     """Durable record for one RepoPilot run."""
 
@@ -61,10 +77,21 @@ class RunManager:
         return record
 
     def update_status(self, run_id: str, status: RunStatus) -> RunRecord:
-        """Update run status and timestamp."""
+        """Update run status and timestamp.
+
+        Raises ``ValueError`` if the transition is invalid or the run is terminal.
+        """
         record = self._records.get(run_id)
         if record is None:
             raise KeyError(f"Unknown run id: {run_id}")
+
+        allowed = _VALID_TRANSITIONS.get(record.status, set())
+        if status not in allowed:
+            raise ValueError(
+                f"Invalid status transition: {record.status} -> {status}. "
+                f"Allowed: {', '.join(s.value for s in allowed) or 'none (terminal)'}"
+            )
+
         updated = record.model_copy(update={"status": status, "updated_at": self._clock()})
         self._records[run_id] = updated
         return updated
@@ -75,3 +102,7 @@ class RunManager:
         if record is None:
             raise KeyError(f"Unknown run id: {run_id}")
         return record
+
+    def list_runs(self) -> list[RunRecord]:
+        """Return all run records."""
+        return list(self._records.values())

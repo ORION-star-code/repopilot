@@ -22,7 +22,7 @@ class RepairRequest:
     created_at: str | None = None
     updated_at: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
-    raw: str = ""
+    raw: str | None = None
 
 
 @dataclass(frozen=True)
@@ -37,21 +37,21 @@ class RepoFile:
 @dataclass(frozen=True)
 class RepoSnapshot:
     root: str
-    files: list[str]
+    files: tuple[str, ...]
     language_counts: dict[str, int] = field(default_factory=dict)
-    file_details: list[RepoFile] = field(default_factory=list)
-    test_files: list[str] = field(default_factory=list)
-    config_files: list[str] = field(default_factory=list)
-    entrypoint_files: list[str] = field(default_factory=list)
-    important_files: list[str] = field(default_factory=list)
+    file_details: tuple[RepoFile, ...] = ()
+    test_files: tuple[str, ...] = ()
+    config_files: tuple[str, ...] = ()
+    entrypoint_files: tuple[str, ...] = ()
+    important_files: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class RepairPlan:
     summary: str
-    target_files: list[str]
-    steps: list[str]
-    verification: list[str]
+    target_files: tuple[str, ...]
+    steps: tuple[str, ...]
+    verification: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -83,7 +83,11 @@ def derive_execution_mode(
     sandbox_enabled: bool,
     shell_execution_enabled: bool,
 ) -> ExecutionMode:
-    """Derive execution mode from config flags."""
+    """Derive execution mode from config flags.
+
+    Returns APPROVED only when both sandbox and shell execution are enabled.
+    Otherwise returns DRY_RUN for safety.
+    """
     if sandbox_enabled and shell_execution_enabled:
         return ExecutionMode.APPROVED
     return ExecutionMode.DRY_RUN
@@ -92,7 +96,7 @@ def derive_execution_mode(
 class CommandPlan(BaseModel):
     """A single planned command with execution mode."""
 
-    request: Any
+    request: Any  # CommandRequest at runtime; Any avoids circular import
     mode: ExecutionMode = ExecutionMode.APPROVED
     description: str = ""
     dry_run_message: str = ""

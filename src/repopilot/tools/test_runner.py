@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from typing import Any
 
@@ -12,6 +13,8 @@ from repopilot.models import ExecutionMode
 from repopilot.sandbox import CommandRequest, SubprocessSandboxExecutor
 
 from .contracts import ToolCategory, ToolErrorCode, ToolResult
+
+logger = logging.getLogger(__name__)
 
 
 class TestExecutionRequest(BaseModel):

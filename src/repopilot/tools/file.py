@@ -2,15 +2,24 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from repopilot.approvals import ApprovalSubject, StrictApprovalPolicy
 
 from .contracts import ToolCategory, ToolErrorCode, ToolResult
+from .safety import contain_path
+
+logger = logging.getLogger(__name__)
+
+MAX_LIST_DEPTH = 10
+MAX_LIST_ENTRIES = 10000
+MAX_READ_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 class FileReadRequest(BaseModel):
@@ -34,6 +43,8 @@ class FileListRequest(BaseModel):
 
     path: str = "."
     recursive: bool = False
+    max_depth: int = Field(default=MAX_LIST_DEPTH, ge=1, le=100)
+    max_entries: int = Field(default=MAX_LIST_ENTRIES, ge=1, le=100000)
 
 
 class RealFileTool:
@@ -42,6 +53,9 @@ class RealFileTool:
     name = "file"
     category = ToolCategory.FILE
     approval_required = False
+
+    def __init__(self, workspace_root: Path | None = None) -> None:
+        self._workspace_root = workspace_root or Path.cwd()
 
     def run(self, arguments: Mapping[str, Any]) -> ToolResult:
         action = arguments.get("action", "")
@@ -62,14 +76,30 @@ class RealFileTool:
         except ValidationError as exc:
             return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
 
-        if not os.path.isfile(req.path):
+        try:
+            resolved = contain_path(req.path, self._workspace_root)
+        except ValueError as exc:
+            return ToolResult.failure(ToolErrorCode.PERMISSION_DENIED, str(exc))
+
+        if not resolved.is_file():
             return ToolResult.failure(
                 ToolErrorCode.NOT_FOUND, f"File not found: {req.path}"
             )
 
+        file_size = resolved.stat().st_size
+        if file_size > MAX_READ_SIZE_BYTES:
+            return ToolResult.failure(
+                ToolErrorCode.INVALID_INPUT,
+                f"File too large ({file_size} bytes, limit {MAX_READ_SIZE_BYTES})",
+            )
+
         try:
-            with open(req.path, encoding="utf-8") as f:
+            with open(resolved, encoding="utf-8") as f:
                 lines = f.readlines()
+        except UnicodeDecodeError:
+            return ToolResult.failure(
+                ToolErrorCode.INVALID_INPUT, "Binary file cannot be read as text"
+            )
         except OSError as exc:
             return ToolResult.failure(ToolErrorCode.UNKNOWN, str(exc))
 
@@ -80,7 +110,7 @@ class RealFileTool:
 
         content = "".join(lines)
         return ToolResult.success(
-            data={"path": req.path, "content": content, "line_count": len(lines)},
+            data={"path": str(resolved), "content": content, "line_count": len(lines)},
             message=f"Read {len(lines)} lines from {req.path}",
         )
 
@@ -90,19 +120,24 @@ class RealFileTool:
         except ValidationError as exc:
             return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
 
+        try:
+            resolved = contain_path(req.path, self._workspace_root)
+        except ValueError as exc:
+            return ToolResult.failure(ToolErrorCode.PERMISSION_DENIED, str(exc))
+
         decision = StrictApprovalPolicy().check(ApprovalSubject.PATCH, req.approved)
         if not decision.approved:
             return ToolResult.requires_approval(decision.reason)
 
         try:
-            os.makedirs(os.path.dirname(req.path) or ".", exist_ok=True)
-            with open(req.path, "w", encoding="utf-8") as f:
+            os.makedirs(resolved.parent, exist_ok=True)
+            with open(resolved, "w", encoding="utf-8") as f:
                 f.write(req.content)
         except OSError as exc:
             return ToolResult.failure(ToolErrorCode.UNKNOWN, str(exc))
 
         return ToolResult.success(
-            data={"path": req.path, "bytes_written": len(req.content.encode())},
+            data={"path": str(resolved), "bytes_written": len(req.content.encode())},
             message=f"Wrote {len(req.content)} chars to {req.path}",
         )
 
@@ -112,26 +147,41 @@ class RealFileTool:
         except ValidationError as exc:
             return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
 
-        if not os.path.isdir(req.path):
+        try:
+            resolved = contain_path(req.path, self._workspace_root)
+        except ValueError as exc:
+            return ToolResult.failure(ToolErrorCode.PERMISSION_DENIED, str(exc))
+
+        if not resolved.is_dir():
             return ToolResult.failure(
                 ToolErrorCode.NOT_FOUND, f"Directory not found: {req.path}"
             )
 
         try:
             if req.recursive:
-                entries = []
-                for root, dirs, files in os.walk(req.path):
+                entries: list[str] = []
+                for root, dirs, files in os.walk(resolved):
+                    depth = Path(root).relative_to(resolved).parts
+                    if len(depth) >= req.max_depth:
+                        dirs.clear()
+                        continue
                     for name in files:
                         entries.append(os.path.join(root, name))
+                        if len(entries) >= req.max_entries:
+                            break
                     for name in dirs:
                         entries.append(os.path.join(root, name) + os.sep)
+                        if len(entries) >= req.max_entries:
+                            break
+                    if len(entries) >= req.max_entries:
+                        break
             else:
-                entries = sorted(os.listdir(req.path))
+                entries = sorted(os.listdir(resolved))
         except OSError as exc:
             return ToolResult.failure(ToolErrorCode.UNKNOWN, str(exc))
 
         return ToolResult.success(
-            data={"path": req.path, "entries": entries, "count": len(entries)},
+            data={"path": str(resolved), "entries": entries, "count": len(entries)},
             message=f"Listed {len(entries)} entries in {req.path}",
         )
 

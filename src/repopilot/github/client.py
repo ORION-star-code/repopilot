@@ -17,6 +17,9 @@ class GitHubIssue(BaseModel):
     labels: list[str] = Field(default_factory=list)
     author: str | None = None
     url: str | None = None
+    state: str = "open"
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class GitHubClient(Protocol):
@@ -30,7 +33,10 @@ class NoopGitHubClient:
     """Placeholder that makes live GitHub access explicit and unavailable."""
 
     def fetch_issue(self, repository: str, issue_number: int) -> GitHubIssue:
-        raise RuntimeError(
-            "Live GitHub access is not implemented in A01. Use fixtures until a scoped "
-            "GitHub client is added."
+        return GitHubIssue(
+            repository=repository,
+            number=issue_number,
+            title=f"[noop] Issue #{issue_number}",
+            body="Live GitHub access is not implemented. Use fixtures.",
+            state="open",
         )

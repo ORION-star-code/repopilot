@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from collections.abc import Mapping
@@ -13,6 +14,16 @@ from pydantic import BaseModel, Field, ValidationError
 from repopilot.retrieval.contracts import LocalCodeRetriever, RetrievalQuery
 
 from .contracts import ToolCategory, ToolErrorCode, ToolResult
+
+logger = logging.getLogger(__name__)
+
+MAX_PATTERN_LENGTH = 500
+MAX_FILE_SIZE_BYTES = 1 * 1024 * 1024  # 1 MB
+
+_IGNORED_DIR_NAMES = {".git", "node_modules", "__pycache__", ".venv", "venv"}
+
+# Patterns that indicate catastrophic backtracking risk
+_NESTED_QUANTIFIER_PATTERN = re.compile(r"\([^)]*[+*][^)]*\)[+*]")
 
 
 class KeywordSearchRequest(BaseModel):
@@ -90,6 +101,20 @@ class RealSearchTool:
                 ToolErrorCode.NOT_FOUND, f"Directory not found: {req.repository_root}"
             )
 
+        # ReDoS protection: pattern length check
+        if len(req.pattern) > MAX_PATTERN_LENGTH:
+            return ToolResult.failure(
+                ToolErrorCode.INVALID_INPUT,
+                f"Pattern too long ({len(req.pattern)} chars, limit {MAX_PATTERN_LENGTH})",
+            )
+
+        # ReDoS protection: nested quantifier detection
+        if _NESTED_QUANTIFIER_PATTERN.search(req.pattern):
+            return ToolResult.failure(
+                ToolErrorCode.INVALID_INPUT,
+                "Pattern contains nested quantifiers which risk catastrophic backtracking",
+            )
+
         try:
             regex = re.compile(req.pattern)
         except re.error as exc:
@@ -100,6 +125,15 @@ class RealSearchTool:
         matches: list[dict[str, Any]] = []
         for filepath in root.rglob(req.glob):
             if not filepath.is_file():
+                continue
+            # Skip ignored directories
+            if any(part in _IGNORED_DIR_NAMES for part in filepath.parts):
+                continue
+            # File size guard
+            try:
+                if filepath.stat().st_size > MAX_FILE_SIZE_BYTES:
+                    continue
+            except OSError:
                 continue
             try:
                 lines = filepath.read_text(encoding="utf-8").splitlines()

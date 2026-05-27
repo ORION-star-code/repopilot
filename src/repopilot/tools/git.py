@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
@@ -12,9 +13,24 @@ from pydantic import BaseModel, ValidationError
 from repopilot.approvals import ApprovalSubject, StrictApprovalPolicy
 
 from .contracts import ToolCategory, ToolErrorCode, ToolResult
+from .safety import sanitize_git_args
 
-READ_ONLY_ACTIONS = {"diff", "status", "log", "show"}
-WRITE_ACTIONS = {"add", "commit", "checkout", "branch"}
+logger = logging.getLogger(__name__)
+
+READ_ONLY_ACTIONS = {"diff", "status", "log", "show", "rev-parse", "remote"}
+WRITE_ACTIONS = {
+    "add",
+    "commit",
+    "checkout",
+    "branch",
+    "push",
+    "reset",
+    "clean",
+    "stash",
+    "merge",
+    "rebase",
+}
+ALL_ACTIONS = READ_ONLY_ACTIONS | WRITE_ACTIONS
 
 
 class GitRequest(BaseModel):
@@ -38,6 +54,18 @@ class RealGitTool:
         try:
             req = GitRequest.model_validate(arguments)
         except ValidationError as exc:
+            return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
+
+        if req.action not in ALL_ACTIONS:
+            return ToolResult.failure(
+                ToolErrorCode.INVALID_INPUT,
+                f"Unknown git action: {req.action!r}. "
+                f"Allowed: {', '.join(sorted(ALL_ACTIONS))}",
+            )
+
+        try:
+            sanitize_git_args(req.args)
+        except ValueError as exc:
             return ToolResult.failure(ToolErrorCode.INVALID_INPUT, str(exc))
 
         repo = Path(req.repository).resolve()

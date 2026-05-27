@@ -16,7 +16,7 @@ def create_repair_plan(
     """Create a deterministic starter plan from issue and repository context."""
     target_files = snapshot.important_files[:5] if snapshot.important_files else snapshot.files[:5]
     search_hint = ", ".join(target_files) if target_files else "no indexed files yet"
-    steps = [
+    steps = (
         f"Clarify failure from request: {request.title}",
         f"Search likely code paths: {search_hint}",
         "Identify the smallest behavior-preserving fix and list files to edit.",
@@ -25,12 +25,12 @@ def create_repair_plan(
         "If validation later fails, inspect output, revise within the bounded retry policy, "
         "and rerun.",
         "Emit dry-run diff, test report, risk assessment, and PR description artifacts.",
-    ]
+    )
     return RepairPlan(
         summary=f"Repair plan for {request.title}",
         target_files=target_files,
         steps=steps,
-        verification=[validation_command],
+        verification=(validation_command,),
     )
 
 

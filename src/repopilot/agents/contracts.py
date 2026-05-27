@@ -7,22 +7,22 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 
+class Severity(StrEnum):
+    """Issue severity levels."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
 class AgentRole(StrEnum):
     TRIAGE = "triage"
     PLANNER = "planner"
     PATCH = "patch"
     FAILURE_ANALYZER = "failure_analyzer"
     REVIEWER = "reviewer"
-
-
-class AgentDecision(BaseModel):
-    """A bounded decision produced by an agent step."""
-
-    role: AgentRole
-    summary: str
-    rationale: str = ""
-    requires_approval: bool = False
-    referenced_files: list[str] = Field(default_factory=list)
+    RETRIEVE = "retrieve"
 
 
 class TriageDecision(BaseModel):
@@ -30,7 +30,7 @@ class TriageDecision(BaseModel):
 
     role: AgentRole = AgentRole.TRIAGE
     summary: str
-    severity: str = "unknown"
+    severity: Severity = Severity.MEDIUM
     likely_area: str | None = None
     requires_human_review: bool = False
 
@@ -49,7 +49,7 @@ class PatchDecision(BaseModel):
     """Describe a proposed patch without applying it."""
 
     role: AgentRole = AgentRole.PATCH
-    patch_summary: str
+    summary: str
     touched_files: list[str] = Field(default_factory=list)
     requires_approval: bool = True
 

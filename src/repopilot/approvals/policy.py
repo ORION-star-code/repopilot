@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Protocol
 
@@ -23,6 +24,7 @@ class ApprovalDecision(BaseModel):
     approved: bool
     subject: ApprovalSubject
     reason: str
+    timestamp: str = ""
 
 
 class ApprovalPolicy(Protocol):
@@ -33,17 +35,32 @@ class ApprovalPolicy(Protocol):
 
 
 class StrictApprovalPolicy:
-    """Default policy: high-risk operations are denied until explicitly approved."""
+    """Default policy: high-risk operations are denied until explicitly approved.
+
+    Maintains an in-memory audit log of all approval decisions.
+    """
+
+    def __init__(self) -> None:
+        self._log: list[ApprovalDecision] = []
 
     def check(self, subject: ApprovalSubject, approved: bool = False) -> ApprovalDecision:
         if approved:
-            return ApprovalDecision(
+            decision = ApprovalDecision(
                 approved=True,
                 subject=subject,
                 reason="Operation was explicitly approved.",
+                timestamp=datetime.now(UTC).isoformat(),
             )
-        return ApprovalDecision(
-            approved=False,
-            subject=subject,
-            reason=f"{subject.value} requires explicit approval.",
-        )
+        else:
+            decision = ApprovalDecision(
+                approved=False,
+                subject=subject,
+                reason=f"{subject.value} requires explicit approval.",
+                timestamp=datetime.now(UTC).isoformat(),
+            )
+        self._log.append(decision)
+        return decision
+
+    def audit_log(self) -> list[ApprovalDecision]:
+        """Return a copy of the approval audit log."""
+        return list(self._log)

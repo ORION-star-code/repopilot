@@ -2,9 +2,9 @@
 
 ## Current Status
 - Project: RepoPilot
-- Latest checkpoint: end-to-end repair workflow complete (F07-F14)
+- Latest checkpoint: code optimization complete (Phase 1-5)
 - Last validation: 2026-05-27, `python scripts/check.py` passed — 65 tests, ruff, mypy, harness all green
-- Current WIP: (goal achieved — full pipeline working)
+- Current WIP: (optimization complete)
 
 ## Completed
 - [x] Harness scaffold created on 2026-05-23
@@ -27,9 +27,14 @@
 - [x] F12 passed: Test failure reflection and retry loop (built into orchestrator)
 - [x] F13 passed: Artifact writer persistence (save diff, test report, PR description to disk)
 - [x] F14 passed: CLI `run` subcommand for end-to-end repair execution
+- [x] Phase 1 security hardening: path containment, git arg sanitization, approval audit log, env sanitization
+- [x] Phase 2 correctness: ReDoS protection, patch dry-run validation, artifact atomic writes
+- [x] Phase 3 robustness: CLI error handling, orchestrator stage validation, ToolResult semantics, retrieval scoring
+- [x] Phase 4 data model: config Literal constraints, repo_analysis expansion, RunManager state machine, logging
+- [x] Phase 5 architecture: agent Severity enum, RETRIEVE role, GitHub sentinel, observability TraceCollector, evaluation metrics
 
 ## In Progress
-- (none — goal achieved)
+- (none — optimization complete)
 
 ## Blocked
 - None recorded

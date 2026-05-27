@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import uuid
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from repopilot.models import (
@@ -17,6 +20,23 @@ from repopilot.tools.file import RealFileTool
 from repopilot.tools.search import RealSearchTool
 
 from .state import RepairRunStatus, RepairStage, RepairWorkflowState
+
+logger = logging.getLogger(__name__)
+
+_ERROR_OUTPUT_LIMIT = 500
+_SEARCH_BODY_LIMIT = 200
+
+# Valid stage transitions
+_VALID_TRANSITIONS: dict[RepairStage, set[RepairStage]] = {
+    RepairStage.INTAKE: {RepairStage.ANALYZE},
+    RepairStage.ANALYZE: {RepairStage.RETRIEVE},
+    RepairStage.RETRIEVE: {RepairStage.PLAN},
+    RepairStage.PLAN: {RepairStage.PATCH},
+    RepairStage.PATCH: {RepairStage.TEST},
+    RepairStage.TEST: {RepairStage.REFLECT, RepairStage.REPORT},
+    RepairStage.REFLECT: {RepairStage.PATCH},
+    RepairStage.REPORT: set(),
+}
 
 
 class RepairWorkflowOrchestrator(Protocol):
@@ -37,6 +57,16 @@ class NoopRepairWorkflowOrchestrator:
             status=RepairRunStatus.RUNNING,
             history=[RepairStage.INTAKE],
         )
+
+
+@dataclass
+class RepairWorkflowResult:
+    """Result of a complete repair workflow run."""
+
+    state: RepairWorkflowState
+    plan: RepairPlan | None
+    artifacts: RepairArtifacts
+    search_results: list[dict] = field(default_factory=list)
 
 
 class RealRepairWorkflowOrchestrator:
@@ -68,7 +98,7 @@ class RealRepairWorkflowOrchestrator:
     ) -> RepairWorkflowResult:
         """Execute the full repair workflow and return results."""
         state = RepairWorkflowState(
-            run_id="cli",
+            run_id=f"run-{uuid.uuid4().hex[:8]}",
             max_retries=self._max_retries,
         )
         artifacts = empty_artifacts()
@@ -85,7 +115,7 @@ class RealRepairWorkflowOrchestrator:
         search_result = self._search_tool.run({
             "action": "keyword",
             "repository_root": repo_root,
-            "query": request.title + " " + request.body[:200],
+            "query": request.title + " " + request.body[:_SEARCH_BODY_LIMIT],
             "limit": 10,
         })
         if search_result.ok and isinstance(search_result.data, dict):
@@ -97,10 +127,7 @@ class RealRepairWorkflowOrchestrator:
         state = self._advance(state, RepairStage.PLAN)
 
         # PATCH
-        if diff:
-            state = self._advance(state, RepairStage.PATCH)
-        else:
-            state = self._advance(state, RepairStage.PATCH)
+        state = self._advance(state, RepairStage.PATCH)
 
         # TEST + REFLECT loop
         test_passed = False
@@ -116,10 +143,10 @@ class RealRepairWorkflowOrchestrator:
             if test_passed:
                 break
 
-            state.retry_count += 1
+            state = state.model_copy(update={"retry_count": state.retry_count + 1})
             if state.retry_count <= state.max_retries:
                 state = self._advance(state, RepairStage.REFLECT)
-                state.last_error = test_output[:500]
+                state.last_error = test_output[:_ERROR_OUTPUT_LIMIT]
                 # Loop back to PATCH for retry
                 state = self._advance(state, RepairStage.PATCH)
 
@@ -148,6 +175,12 @@ class RealRepairWorkflowOrchestrator:
     def _advance(
         self, state: RepairWorkflowState, stage: RepairStage
     ) -> RepairWorkflowState:
+        allowed = _VALID_TRANSITIONS.get(state.stage, set())
+        if stage not in allowed:
+            raise ValueError(
+                f"Invalid stage transition: {state.stage} -> {stage}. "
+                f"Allowed: {', '.join(s.value for s in allowed) or 'none (terminal)'}"
+            )
         state.stage = stage
         state.status = RepairRunStatus.RUNNING
         state.history.append(stage)
@@ -172,19 +205,3 @@ class RealRepairWorkflowOrchestrator:
             f"## Target Files\n{target_files}\n\n"
             f"## Validation\n{status}\n"
         )
-
-
-class RepairWorkflowResult:
-    """Result of a complete repair workflow run."""
-
-    def __init__(
-        self,
-        state: RepairWorkflowState,
-        plan: RepairPlan | None,
-        artifacts: RepairArtifacts,
-        search_results: list[dict],
-    ) -> None:
-        self.state = state
-        self.plan = plan
-        self.artifacts = artifacts
-        self.search_results = search_results

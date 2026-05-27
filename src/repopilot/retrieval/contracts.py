@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 from typing import Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from repopilot.repo_analysis import inspect_repository
+
+MAX_SCORE = 100.0
+MAX_FILE_SIZE_BYTES = 1 * 1024 * 1024  # 1 MB
 
 
 class RetrievalQuery(BaseModel):
@@ -16,6 +20,13 @@ class RetrievalQuery(BaseModel):
     repository_root: str
     text: str = Field(min_length=1)
     limit: int = 10
+
+    @field_validator("text")
+    @classmethod
+    def reject_whitespace_only(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Query must contain non-whitespace characters")
+        return v
 
 
 class RetrievedContext(BaseModel):
@@ -41,6 +52,18 @@ class NoopRetriever:
         return []
 
 
+@lru_cache(maxsize=256)
+def _read_file_lines(path: str) -> list[str] | None:
+    """Read and cache file lines. Returns None on error."""
+    p = Path(path)
+    try:
+        if p.stat().st_size > MAX_FILE_SIZE_BYTES:
+            return None
+        return p.read_text(encoding="utf-8").splitlines()
+    except (UnicodeDecodeError, OSError):
+        return None
+
+
 class LocalCodeRetriever:
     """Deterministic read-only retrieval over inspected repository files."""
 
@@ -54,9 +77,8 @@ class LocalCodeRetriever:
         results: list[RetrievedContext] = []
         for relative in snapshot.files:
             path = root / relative
-            try:
-                lines = path.read_text(encoding="utf-8").splitlines()
-            except UnicodeDecodeError:
+            lines = _read_file_lines(str(path))
+            if lines is None:
                 continue
 
             match = _best_match(relative, lines, terms)
@@ -84,7 +106,7 @@ def _best_match(path: str, lines: list[str], terms: list[str]) -> tuple[float, s
     for index, line in enumerate(lines):
         lower_line = line.lower()
         line_hits = sum(1 for term in terms if term in lower_line)
-        score = float((line_hits * 3) + path_score)
+        score = min(float((line_hits * 3) + path_score), MAX_SCORE)
         if score > best_score:
             best_score = score
             best_line_index = index

@@ -129,6 +129,13 @@
       "verification": "python -m pytest tests/unit -q",
       "state": "passing",
       "evidence": "2026-05-27: python scripts/check.py passed; repopilot run command drives full pipeline with artifact output."
+    },
+    {
+      "id": "O01",
+      "behavior": "Code optimization: security hardening, correctness fixes, robustness improvements, data model hardening, architecture cleanup",
+      "verification": "python scripts/check.py",
+      "state": "passing",
+      "evidence": "2026-05-27: Phase 1-5 optimization complete. Path containment, git arg sanitization, ReDoS protection, patch dry-run, CLI error handling, orchestrator stage validation, RunManager state machine, logging infrastructure, agent contracts cleanup. 65 tests passing."
     }
   ]
 }

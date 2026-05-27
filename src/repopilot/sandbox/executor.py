@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import subprocess
 from typing import Protocol
 
 from pydantic import BaseModel, Field
 
 from repopilot.models import ExecutionMode
+
+logger = logging.getLogger(__name__)
 
 
 class CommandRequest(BaseModel):
@@ -61,6 +65,11 @@ class NoopSandboxExecutor:
         )
 
 
+def _sanitize_env() -> dict[str, str]:
+    """Return a copy of os.environ with REPOPILOT_* variables removed."""
+    return {k: v for k, v in os.environ.items() if not k.startswith("REPOPILOT_")}
+
+
 class SubprocessSandboxExecutor:
     """Executor that runs commands via subprocess with safety constraints."""
 
@@ -81,6 +90,7 @@ class SubprocessSandboxExecutor:
                 capture_output=True,
                 text=True,
                 timeout=request.timeout_seconds,
+                env=_sanitize_env(),
             )
             return CommandResult(
                 exit_code=completed.returncode,

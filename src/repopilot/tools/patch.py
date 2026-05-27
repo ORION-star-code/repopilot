@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import tempfile
 from collections.abc import Mapping
@@ -15,6 +16,8 @@ from repopilot.models import ExecutionMode
 
 from .contracts import ToolCategory, ToolErrorCode, ToolResult
 
+logger = logging.getLogger(__name__)
+
 
 class PatchProposal(BaseModel):
     """A proposed patch that has not been applied."""
@@ -26,6 +29,7 @@ class PatchProposal(BaseModel):
     approved: bool = False
     execution_mode: ExecutionMode = ExecutionMode.APPROVED
     working_directory: str = "."
+    strip_level: int = Field(default=1, ge=0, le=10)
 
 
 class PatchExecutionResult(BaseModel):
@@ -77,8 +81,37 @@ class RealPatchTool:
             tmp_path = tmp.name
 
         try:
+            # Dry-run validation first
+            dry_run = subprocess.run(
+                [
+                    "patch",
+                    f"-p{proposal.strip_level}",
+                    "--dry-run",
+                    "--input",
+                    tmp_path,
+                    "--directory",
+                    str(cwd),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if dry_run.returncode != 0:
+                return ToolResult.failure(
+                    ToolErrorCode.UNKNOWN,
+                    f"Patch validation failed (dry-run): {dry_run.stderr.strip()}",
+                )
+
+            # Actually apply the patch
             completed = subprocess.run(
-                ["patch", "-p1", "--input", tmp_path, "--directory", str(cwd)],
+                [
+                    "patch",
+                    f"-p{proposal.strip_level}",
+                    "--input",
+                    tmp_path,
+                    "--directory",
+                    str(cwd),
+                ],
                 capture_output=True,
                 text=True,
                 timeout=30,
