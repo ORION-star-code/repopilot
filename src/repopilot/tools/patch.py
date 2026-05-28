@@ -155,5 +155,13 @@ class RealPatchTool:
         return ToolResult.failure(ToolErrorCode.UNKNOWN, result.message)
 
 
-# Backward-compatible alias
-NoopPatchTool = RealPatchTool
+def __getattr__(name: str) -> type:
+    if name == "NoopPatchTool":
+        import warnings
+        warnings.warn(
+            "NoopPatchTool is deprecated, use RealPatchTool instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return RealPatchTool
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

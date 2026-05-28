@@ -11,8 +11,8 @@ from repopilot.models import (
 )
 from repopilot.sandbox import CommandRequest, NoopSandboxExecutor
 from repopilot.tools import (
-    NoopPatchTool,
     NoopTestRunnerTool,
+    RealPatchTool,
     ToolErrorCode,
 )
 
@@ -188,7 +188,7 @@ def test_test_runner_unapproved_still_denied_regardless_of_mode():
 
 
 def test_patch_tool_dry_run_produces_planning_artifact():
-    result = NoopPatchTool().run(
+    result = RealPatchTool().run(
         {
             "run_id": "run_patch",
             "target_files": ["src/app.py"],
@@ -207,7 +207,7 @@ def test_patch_tool_dry_run_produces_planning_artifact():
 
 
 def test_patch_tool_approved_mode_attempts_apply():
-    result = NoopPatchTool().run(
+    result = RealPatchTool().run(
         {
             "run_id": "run_patch",
             "target_files": ["src/app.py"],
@@ -223,7 +223,7 @@ def test_patch_tool_approved_mode_attempts_apply():
 
 
 def test_patch_tool_unapproved_still_denied_regardless_of_mode():
-    result = NoopPatchTool().run(
+    result = RealPatchTool().run(
         {
             "run_id": "run_patch",
             "target_files": ["src/app.py"],

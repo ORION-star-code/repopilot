@@ -4,11 +4,11 @@ from repopilot.agents import AgentRole
 from repopilot.artifacts import ArtifactsWriter
 from repopilot.runs import RunManager, RunStatus
 from repopilot.tools import (
-    NoopFileTool,
-    NoopGitTool,
-    NoopPatchTool,
-    NoopSearchTool,
     NoopTestRunnerTool,
+    RealFileTool,
+    RealGitTool,
+    RealPatchTool,
+    RealSearchTool,
     ToolCategory,
     ToolErrorCode,
 )
@@ -76,11 +76,11 @@ def test_agent_roles_cover_layered_architecture():
 
 
 def test_tool_layer_uses_categories_and_safe_defaults():
-    file_result = NoopFileTool().run({"action": "read", "path": "nonexistent.txt"})
-    search_result = NoopSearchTool().run(
+    file_result = RealFileTool().run({"action": "read", "path": "nonexistent.txt"})
+    search_result = RealSearchTool().run(
         {"action": "keyword", "repository_root": ".", "query": "token"}
     )
-    patch_result = NoopPatchTool().run(
+    patch_result = RealPatchTool().run(
         {
             "run_id": "run_tools",
             "target_files": ["src/app.py"],
@@ -94,10 +94,10 @@ def test_tool_layer_uses_categories_and_safe_defaults():
             "command": ["pytest"],
         }
     )
-    git_result = NoopGitTool().run({"action": "commit", "repository": ".", "message": "test"})
+    git_result = RealGitTool().run({"action": "commit", "repository": ".", "message": "test"})
 
-    assert NoopFileTool().category == ToolCategory.FILE
-    assert NoopSearchTool().category == ToolCategory.SEARCH
+    assert RealFileTool().category == ToolCategory.FILE
+    assert RealSearchTool().category == ToolCategory.SEARCH
     assert not file_result.ok
     assert file_result.error_code == ToolErrorCode.NOT_FOUND
     assert search_result.ok

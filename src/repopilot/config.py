@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     shell_execution_enabled: bool = False
     high_risk_actions_require_approval: bool = True
     max_repair_retries: int = Field(default=2, ge=0, le=10)
+    default_test_command: list[str] = Field(
+        default_factory=lambda: ["python", "-m", "pytest", "-q"]
+    )
 
     @property
     def execution_mode(self) -> ExecutionMode:

@@ -130,5 +130,13 @@ class RealGitTool:
         )
 
 
-# Backward-compatible alias
-NoopGitTool = RealGitTool
+def __getattr__(name: str) -> type:
+    if name == "NoopGitTool":
+        import warnings
+        warnings.warn(
+            "NoopGitTool is deprecated, use RealGitTool instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return RealGitTool
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

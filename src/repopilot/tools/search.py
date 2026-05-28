@@ -169,5 +169,13 @@ class RealSearchTool:
         )
 
 
-# Backward-compatible alias
-NoopSearchTool = RealSearchTool
+def __getattr__(name: str) -> type:
+    if name == "NoopSearchTool":
+        import warnings
+        warnings.warn(
+            "NoopSearchTool is deprecated, use RealSearchTool instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return RealSearchTool
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

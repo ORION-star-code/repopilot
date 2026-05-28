@@ -191,5 +191,13 @@ class RealFileTool:
         )
 
 
-# Backward-compatible alias for tests that reference NoopFileTool.
-NoopFileTool = RealFileTool
+def __getattr__(name: str) -> type:
+    if name == "NoopFileTool":
+        import warnings
+        warnings.warn(
+            "NoopFileTool is deprecated, use RealFileTool instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return RealFileTool
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

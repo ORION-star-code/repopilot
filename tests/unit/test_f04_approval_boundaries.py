@@ -1,7 +1,7 @@
 from repopilot.approvals import ApprovalSubject, StrictApprovalPolicy
 from repopilot.tools import (
-    NoopPatchTool,
     NoopTestRunnerTool,
+    RealPatchTool,
     ToolErrorCode,
 )
 
@@ -15,7 +15,7 @@ def test_strict_approval_policy_denies_by_default():
 
 
 def test_patch_tool_requires_approval_before_execution():
-    result = NoopPatchTool().run(
+    result = RealPatchTool().run(
         {
             "run_id": "run_patch",
             "target_files": ["src/app.py"],
@@ -30,7 +30,7 @@ def test_patch_tool_requires_approval_before_execution():
 
 
 def test_patch_tool_attempts_apply_after_approval():
-    result = NoopPatchTool().run(
+    result = RealPatchTool().run(
         {
             "run_id": "run_patch",
             "target_files": ["src/app.py"],
@@ -45,7 +45,7 @@ def test_patch_tool_attempts_apply_after_approval():
 
 
 def test_patch_tool_rejects_invalid_request():
-    result = NoopPatchTool().run({"run_id": "run_patch"})
+    result = RealPatchTool().run({"run_id": "run_patch"})
 
     assert not result.ok
     assert result.error_code == ToolErrorCode.INVALID_INPUT

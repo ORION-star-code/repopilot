@@ -145,6 +145,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def _run_repair(args: argparse.Namespace) -> int:
     try:
+        settings = get_settings()
         fetcher = FixtureIssueFetcher(args.fixture) if args.fixture else None
         request = normalize_issue_input(args.input, issue_fetcher=fetcher)
         snapshot = inspect_repository(Path(args.repo))
@@ -155,7 +156,10 @@ def _run_repair(args: argparse.Namespace) -> int:
         if diff and Path(diff).is_file():
             diff = Path(diff).read_text(encoding="utf-8")
 
-        test_cmd = shlex.split(args.test_cmd)
+        if args.test_cmd != "python -m pytest -q":
+            test_cmd = shlex.split(args.test_cmd)
+        else:
+            test_cmd = settings.default_test_command
         orch = RealRepairWorkflowOrchestrator(
             validation_command=test_cmd,
             max_retries=args.max_retries,
