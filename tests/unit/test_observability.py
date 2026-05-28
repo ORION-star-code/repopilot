@@ -107,6 +107,7 @@ class TestTraceEventType:
         expected = {
             "workflow", "tool_call", "model_call", "test_run",
             "approval", "stage_transition", "retry", "error",
+            "artifact_write", "sandbox_execution",
         }
         assert {e.value for e in TraceEventType} == expected
 

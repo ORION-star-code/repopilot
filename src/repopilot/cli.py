@@ -11,6 +11,7 @@ import uuid
 from dataclasses import asdict
 from pathlib import Path
 
+from . import __version__
 from .artifacts.writer import ArtifactBundle, ArtifactsWriter
 from .config import get_settings
 from .issue_fetchers import FixtureIssueFetcher
@@ -24,13 +25,21 @@ logger = logging.getLogger(__name__)
 
 OUTPUT_TRUNCATION_LIMIT = 500
 
+_CLI_ERROR_TYPES = (ValueError, FileNotFoundError, NotADirectoryError, OSError)
+
+
+def _handle_cli_error(exc: Exception) -> int:
+    """Print error to stderr and return exit code 1."""
+    print(f"Error: {exc}", file=sys.stderr)
+    return 1
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="repopilot",
         description="Issue-driven repository repair assistant.",
     )
-    parser.add_argument("--version", action="version", version="%(prog)s 0.1.0")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subcommands = parser.add_subparsers(dest="command")
 
     intake = subcommands.add_parser("intake", help="Normalize an issue URL or bug description.")
@@ -95,18 +104,16 @@ def main(argv: list[str] | None = None) -> int:
             request = normalize_issue_input(args.input, issue_fetcher=fetcher)
             print(json.dumps(asdict(request), indent=2))
             return 0
-        except (ValueError, OSError) as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
+        except _CLI_ERROR_TYPES as exc:
+            return _handle_cli_error(exc)
 
     if args.command == "inspect":
         try:
             snapshot = inspect_repository(Path(args.path))
             print(json.dumps(asdict(snapshot), indent=2))
             return 0
-        except (FileNotFoundError, NotADirectoryError, OSError) as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
+        except _CLI_ERROR_TYPES as exc:
+            return _handle_cli_error(exc)
 
     if args.command == "plan":
         try:
@@ -115,9 +122,8 @@ def main(argv: list[str] | None = None) -> int:
             plan = create_repair_plan(request, snapshot)
             print(json.dumps(asdict(plan), indent=2))
             return 0
-        except (ValueError, FileNotFoundError, NotADirectoryError, OSError) as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
+        except _CLI_ERROR_TYPES as exc:
+            return _handle_cli_error(exc)
 
     if args.command == "dry-run":
         try:
@@ -127,9 +133,8 @@ def main(argv: list[str] | None = None) -> int:
             result = run_dry_repair_workflow(request, snapshot)
             print(json.dumps(asdict(result), indent=2))
             return 0
-        except (ValueError, FileNotFoundError, NotADirectoryError, OSError) as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
+        except _CLI_ERROR_TYPES as exc:
+            return _handle_cli_error(exc)
 
     if args.command == "run":
         return _run_repair(args)
@@ -192,7 +197,5 @@ def _run_repair(args: argparse.Namespace) -> int:
             print(_truncate(result.artifacts.pr_description))
 
         return 0 if result.state.status == RunStatus.SUCCEEDED else 1
-
-    except (ValueError, FileNotFoundError, NotADirectoryError, OSError) as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 1
+    except _CLI_ERROR_TYPES as exc:
+        return _handle_cli_error(exc)

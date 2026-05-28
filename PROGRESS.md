@@ -2,8 +2,8 @@
 
 ## Current Status
 - Project: RepoPilot
-- Latest checkpoint: second-round optimization complete (Phase 1-5)
-- Last validation: 2026-05-27, `python scripts/check.py` passed — 114 tests, ruff, mypy, harness all green
+- Latest checkpoint: third-round optimization complete (Phase 1-5)
+- Last validation: 2026-05-28, `python scripts/check.py` passed — 158 tests, ruff, mypy, harness all green
 - Current WIP: (optimization complete)
 
 ## Completed
@@ -29,6 +29,7 @@
 - [x] F14 passed: CLI `run` subcommand for end-to-end repair execution
 - [x] O01 first optimization: security hardening, correctness, robustness, data model, architecture cleanup (65 tests)
 - [x] O02 second optimization: security boundary completion, architecture dedup, test coverage, observability integration (114 tests)
+- [x] O03 third optimization: orchestrator decomposition, FastAPI endpoints, test expansion, CLI dedup (158 tests)
 
 ## In Progress
 - (none — optimization complete)

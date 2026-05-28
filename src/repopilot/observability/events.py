@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -18,6 +20,8 @@ class TraceEventType(StrEnum):
     STAGE_TRANSITION = "stage_transition"
     RETRY = "retry"
     ERROR = "error"
+    ARTIFACT_WRITE = "artifact_write"
+    SANDBOX_EXECUTION = "sandbox_execution"
 
 
 class TraceSeverity(StrEnum):
@@ -59,3 +63,18 @@ class TraceCollector:
     def clear(self) -> None:
         """Clear all collected events."""
         self._events.clear()
+
+    @property
+    def count(self) -> int:
+        """Return the number of collected events."""
+        return len(self._events)
+
+    def export_json(self) -> str:
+        """Export all events as a JSON array string."""
+        return json.dumps([e.model_dump(mode="json") for e in self._events], indent=2)
+
+    def export_jsonl(self, path: Path) -> None:
+        """Append events to a JSONL file (one JSON object per line)."""
+        with open(path, "a", encoding="utf-8") as f:
+            for event in self._events:
+                f.write(json.dumps(event.model_dump(mode="json")) + "\n")

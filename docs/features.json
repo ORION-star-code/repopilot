@@ -143,6 +143,13 @@
       "verification": "python scripts/check.py",
       "state": "passing",
       "evidence": "2026-05-27: Second optimization round complete. Security validations 16->24 (+50%), try/except 34->40 (+18%), tests 65->114 (+75%), shared StateMachine, unified RunStatus enum, pure-function _advance, TraceCollector wired into orchestrator, 4 new test files. 114 tests passing."
+    },
+    {
+      "id": "O03",
+      "behavior": "Third-round optimization: orchestrator decomposition, FastAPI endpoints, test expansion, observability deepening, CLI dedup",
+      "verification": "python scripts/check.py",
+      "state": "passing",
+      "evidence": "2026-05-28: Third optimization round complete. Orchestrator run() decomposed into _stage_retrieve/_stage_test_loop/_build_artifacts (70->20 lines). 5 new FastAPI endpoints (/intake, /inspect, /plan, /dry-run, /run). Tests 114->158 (+39%). TraceCollector export_json/export_jsonl added. CLI error handling deduplicated via _handle_cli_error helper. 4 new test files. 158 tests passing."
     }
   ]
 }

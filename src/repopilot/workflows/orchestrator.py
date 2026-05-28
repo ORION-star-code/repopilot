@@ -14,7 +14,7 @@ from repopilot.models import (
     RepoSnapshot,
 )
 from repopilot.observability.events import TraceCollector, TraceEvent, TraceEventType, TraceSeverity
-from repopilot.repair_workflow import create_repair_plan, empty_artifacts
+from repopilot.repair_workflow import create_repair_plan
 from repopilot.runs import RunRecord
 from repopilot.runs.manager import RunStatus
 from repopilot.sandbox import CommandRequest, SubprocessSandboxExecutor
@@ -105,26 +105,13 @@ class RealRepairWorkflowOrchestrator:
             run_id=f"run-{uuid.uuid4().hex[:8]}",
             max_retries=self._max_retries,
         )
-        artifacts = empty_artifacts()
-        plan: RepairPlan | None = None
-        search_results: list[dict] = []
 
-        # INTAKE
+        # INTAKE → ANALYZE
         state = self._advance(state, RepairStage.INTAKE)
-
-        # ANALYZE
         state = self._advance(state, RepairStage.ANALYZE)
 
         # RETRIEVE
-        search_result = self._search_tool.run({
-            "action": "keyword",
-            "repository_root": repo_root,
-            "query": request.title + " " + request.body[:_SEARCH_BODY_LIMIT],
-            "limit": 10,
-        })
-        if search_result.ok and isinstance(search_result.data, dict):
-            search_results = search_result.data.get("results", [])
-        state = self._advance(state, RepairStage.RETRIEVE)
+        state, search_results = self._stage_retrieve(state, request, repo_root)
 
         # PLAN
         plan = create_repair_plan(request, snapshot)
@@ -134,8 +121,60 @@ class RealRepairWorkflowOrchestrator:
         state = self._advance(state, RepairStage.PATCH)
 
         # TEST + REFLECT loop
+        state, test_passed, test_output = self._stage_test_loop(state, repo_root)
+
+        # REPORT
+        state = self._advance(state, RepairStage.REPORT)
+        final_status = RunStatus.SUCCEEDED if test_passed else RunStatus.FAILED
+        state = state.model_copy(update={"status": final_status})
+
+        # Build artifacts
+        artifacts = self._build_artifacts(request, plan, test_passed, test_output, state, diff)
+
+        return RepairWorkflowResult(
+            state=state,
+            plan=plan,
+            artifacts=artifacts,
+            search_results=search_results,
+        )
+
+    def _stage_retrieve(
+        self,
+        state: RepairWorkflowState,
+        request: RepairRequest,
+        repo_root: str,
+    ) -> tuple[RepairWorkflowState, list[dict]]:
+        """Execute RETRIEVE stage and return updated state with search results."""
+        search_result = self._search_tool.run({
+            "action": "keyword",
+            "repository_root": repo_root,
+            "query": request.title + " " + request.body[:_SEARCH_BODY_LIMIT],
+            "limit": 10,
+        })
+        search_results: list[dict] = []
+        if search_result.ok and isinstance(search_result.data, dict):
+            search_results = search_result.data.get("results", [])
+
+        if self._collector:
+            self._collector.record(TraceEvent(
+                run_id=state.run_id,
+                event_type=TraceEventType.TOOL_CALL,
+                message=f"Search returned {len(search_results)} results",
+                metadata={"tool": "search", "query_length": len(request.title)},
+            ))
+
+        state = self._advance(state, RepairStage.RETRIEVE)
+        return state, search_results
+
+    def _stage_test_loop(
+        self,
+        state: RepairWorkflowState,
+        repo_root: str,
+    ) -> tuple[RepairWorkflowState, bool, str]:
+        """Execute TEST+REFLECT retry loop and return final state, pass status, and output."""
         test_passed = False
         test_output = ""
+
         while state.retry_count <= state.max_retries:
             state = self._advance(state, RepairStage.TEST)
             cmd_result = self._sandbox.run(
@@ -143,6 +182,15 @@ class RealRepairWorkflowOrchestrator:
             )
             test_output = cmd_result.stdout + cmd_result.stderr
             test_passed = cmd_result.exit_code == 0
+
+            if self._collector:
+                self._collector.record(TraceEvent(
+                    run_id=state.run_id,
+                    event_type=TraceEventType.SANDBOX_EXECUTION,
+                    message=f"Sandbox exit_code={cmd_result.exit_code}",
+                    severity=TraceSeverity.INFO if test_passed else TraceSeverity.WARNING,
+                    metadata={"exit_code": cmd_result.exit_code},
+                ))
 
             if test_passed:
                 break
@@ -159,15 +207,20 @@ class RealRepairWorkflowOrchestrator:
             if state.retry_count <= state.max_retries:
                 state = self._advance(state, RepairStage.REFLECT)
                 state = state.model_copy(update={"last_error": test_output[:_ERROR_OUTPUT_LIMIT]})
-                # Loop back to PATCH for retry
                 state = self._advance(state, RepairStage.PATCH)
 
-        # REPORT
-        state = self._advance(state, RepairStage.REPORT)
-        final_status = RunStatus.SUCCEEDED if test_passed else RunStatus.FAILED
-        state = state.model_copy(update={"status": final_status})
+        return state, test_passed, test_output
 
-        # Build artifacts
+    def _build_artifacts(
+        self,
+        request: RepairRequest,
+        plan: RepairPlan | None,
+        test_passed: bool,
+        test_output: str,
+        state: RepairWorkflowState,
+        diff: str,
+    ) -> RepairArtifacts:
+        """Build repair artifacts from workflow results."""
         artifacts = RepairArtifacts(
             git_diff=diff or "No patch was generated.",
             test_report=test_output or "No tests were executed.",
@@ -175,12 +228,16 @@ class RealRepairWorkflowOrchestrator:
             pr_description=self._build_pr_description(request, plan, test_passed),
         )
 
-        return RepairWorkflowResult(
-            state=state,
-            plan=plan,
-            artifacts=artifacts,
-            search_results=search_results,
-        )
+        if self._collector:
+            self._collector.record(TraceEvent(
+                run_id=state.run_id,
+                event_type=TraceEventType.ARTIFACT_WRITE,
+                message=f"Built {len(artifacts.git_diff)} char diff, "
+                        f"risk={artifacts.risk_assessment[:50]}",
+                metadata={"diff_length": len(artifacts.git_diff)},
+            ))
+
+        return artifacts
 
     def _advance(
         self, state: RepairWorkflowState, stage: RepairStage
