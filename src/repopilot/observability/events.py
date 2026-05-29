@@ -47,6 +47,7 @@ class TraceCollector:
 
     def __init__(self) -> None:
         self._events: list[TraceEvent] = []
+        self._export_cursor: int = 0
 
     def record(self, event: TraceEvent) -> None:
         """Add an event to the collection."""
@@ -63,6 +64,7 @@ class TraceCollector:
     def clear(self) -> None:
         """Clear all collected events."""
         self._events.clear()
+        self._export_cursor = 0
 
     @property
     def count(self) -> int:
@@ -74,7 +76,9 @@ class TraceCollector:
         return json.dumps([e.model_dump(mode="json") for e in self._events], indent=2)
 
     def export_jsonl(self, path: Path) -> None:
-        """Append events to a JSONL file (one JSON object per line)."""
+        """Append new events to a JSONL file since last export."""
         with open(path, "a", encoding="utf-8") as f:
-            for event in self._events:
+            for event in self._events[self._export_cursor :]:
                 f.write(json.dumps(event.model_dump(mode="json")) + "\n")
+            f.flush()
+        self._export_cursor = len(self._events)

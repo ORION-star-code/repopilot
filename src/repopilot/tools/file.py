@@ -33,7 +33,7 @@ class FileReadRequest(BaseModel):
 class FileWriteRequest(BaseModel):
     """Request to write a file."""
 
-    path: str
+    path: str = Field(min_length=1)
     content: str
     approved: bool = False
 
@@ -41,7 +41,7 @@ class FileWriteRequest(BaseModel):
 class FileListRequest(BaseModel):
     """Request to list directory contents."""
 
-    path: str = "."
+    path: str = Field(default=".", min_length=1)
     recursive: bool = False
     max_depth: int = Field(default=MAX_LIST_DEPTH, ge=1, le=100)
     max_entries: int = Field(default=MAX_LIST_ENTRIES, ge=1, le=100000)

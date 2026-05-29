@@ -53,7 +53,7 @@ class TestBuildParser:
     def test_run_default_test_cmd(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["run", "bug"])
-        assert args.test_cmd == "python -m pytest -q"
+        assert args.test_cmd is None
 
     def test_no_command_returns_none(self) -> None:
         parser = build_parser()

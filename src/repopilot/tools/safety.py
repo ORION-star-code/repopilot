@@ -29,6 +29,15 @@ def contain_path(requested: str, workspace_root: Path) -> Path:
     Raises ``ValueError`` if the resolved path escapes the workspace.
     """
     root = workspace_root.resolve()
+
+    # Explicitly reject absolute paths — they always escape the workspace
+    p = Path(requested)
+    if p.is_absolute():
+        logger.warning(
+            "Absolute path rejected: requested=%r root=%s", requested, root,
+        )
+        raise ValueError(f"Absolute path {requested!r} is not allowed")
+
     resolved = (root / requested).resolve()
     if not resolved.is_relative_to(root):
         logger.warning(

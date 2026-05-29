@@ -8,9 +8,11 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from repopilot.config import get_settings
 from repopilot.issue_intake import normalize_issue_input
 from repopilot.repair_workflow import create_repair_plan
 from repopilot.repo_analysis import inspect_repository
+from repopilot.tools.safety import contain_path
 
 router = APIRouter(tags=["plan"])
 
@@ -34,9 +36,12 @@ class PlanResponse(BaseModel):
 @router.post("/plan", response_model=PlanResponse)
 def plan(request: PlanRequest) -> PlanResponse:
     """Create a starter repair plan from input and repository context."""
+    settings = get_settings()
+    root = Path(settings.workspace_root)
     try:
+        validated = contain_path(request.repo, root)
         repair_request = normalize_issue_input(request.input)
-        snapshot = inspect_repository(Path(request.repo))
+        snapshot = inspect_repository(validated)
         result = create_repair_plan(repair_request, snapshot)
         return PlanResponse(**asdict(result))
     except (ValueError, FileNotFoundError, NotADirectoryError) as exc:

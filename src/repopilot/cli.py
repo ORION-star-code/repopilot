@@ -77,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("input", help="GitHub Issue URL or raw bug description.")
     run.add_argument("--repo", default=".", help="Repository path to repair.")
     run.add_argument("--diff", default="", help="Unified diff to apply (or path to .patch file).")
-    run.add_argument("--test-cmd", default="python -m pytest -q", help="Validation command.")
+    run.add_argument("--test-cmd", default=None, help="Validation command.")
     run.add_argument("--max-retries", type=int, default=2, help="Max retry attempts.")
     run.add_argument("--output", default="", help="Directory to save artifacts.")
     run.add_argument("--fixture", help="Load issue from local JSON fixture.")
@@ -156,7 +156,7 @@ def _run_repair(args: argparse.Namespace) -> int:
         if diff and Path(diff).is_file():
             diff = Path(diff).read_text(encoding="utf-8")
 
-        if args.test_cmd != "python -m pytest -q":
+        if args.test_cmd is not None:
             test_cmd = shlex.split(args.test_cmd)
         else:
             test_cmd = settings.default_test_command

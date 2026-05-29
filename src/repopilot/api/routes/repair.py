@@ -10,10 +10,12 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from repopilot.config import get_settings
 from repopilot.issue_fetchers import FixtureIssueFetcher
 from repopilot.issue_intake import normalize_issue_input
 from repopilot.repair_workflow import run_dry_repair_workflow
 from repopilot.repo_analysis import inspect_repository
+from repopilot.tools.safety import contain_path
 from repopilot.workflows.orchestrator import RealRepairWorkflowOrchestrator
 
 router = APIRouter(tags=["repair"])
@@ -41,10 +43,13 @@ class DryRunResponse(BaseModel):
 @router.post("/dry-run", response_model=DryRunResponse)
 def dry_run(request: DryRunRequest) -> DryRunResponse:
     """Run the no-side-effect repair workflow and emit planned artifacts."""
+    settings = get_settings()
+    root = Path(settings.workspace_root)
     try:
+        validated = contain_path(request.repo, root)
         fetcher = FixtureIssueFetcher(request.fixture) if request.fixture else None
         repair_request = normalize_issue_input(request.input, issue_fetcher=fetcher)
-        snapshot = inspect_repository(Path(request.repo))
+        snapshot = inspect_repository(validated)
         result = run_dry_repair_workflow(repair_request, snapshot)
         return DryRunResponse(
             workflow_status=result.workflow_status,
@@ -87,11 +92,14 @@ class RunResponse(BaseModel):
 @router.post("/run", response_model=RunResponse)
 def run(request: RunRequest) -> RunResponse:
     """Run the full repair workflow with real tool execution."""
+    settings = get_settings()
+    root = Path(settings.workspace_root)
     try:
+        validated = contain_path(request.repo, root)
         fetcher = FixtureIssueFetcher(request.fixture) if request.fixture else None
         repair_request = normalize_issue_input(request.input, issue_fetcher=fetcher)
-        snapshot = inspect_repository(Path(request.repo))
-        repo_root = str(Path(request.repo).resolve())
+        snapshot = inspect_repository(validated)
+        repo_root = str(validated)
 
         test_cmd = shlex.split(request.test_cmd)
         orch = RealRepairWorkflowOrchestrator(

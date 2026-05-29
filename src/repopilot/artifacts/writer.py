@@ -54,10 +54,20 @@ class ArtifactsWriter:
     ) -> list[str]:
         """Persist artifact bundle to disk. Returns list of written file paths."""
         root = workspace_root or Path.cwd()
-        try:
-            resolved_dir = contain_path(output_dir, root)
-        except ValueError as exc:
-            raise ValueError(f"Output directory escapes workspace: {exc}") from exc
+        # If output_dir is absolute and within root, use it directly;
+        # otherwise validate through contain_path
+        output_path = Path(output_dir)
+        if output_path.is_absolute():
+            resolved_dir = output_path.resolve()
+            if not resolved_dir.is_relative_to(root.resolve()):
+                raise ValueError(
+                    f"Output directory {output_dir!r} escapes workspace {root}"
+                )
+        else:
+            try:
+                resolved_dir = contain_path(output_dir, root)
+            except ValueError as exc:
+                raise ValueError(f"Output directory escapes workspace: {exc}") from exc
 
         resolved_dir.mkdir(parents=True, exist_ok=True)
 

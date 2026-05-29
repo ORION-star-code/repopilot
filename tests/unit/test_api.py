@@ -103,7 +103,7 @@ class TestInspectEndpoint:
         assert "files" in data
         assert "language_counts" in data
 
-    def test_inspect_nonexistent_path_returns_404(self) -> None:
+    def test_inspect_nonexistent_path_returns_400(self) -> None:
         app = create_app(Settings())
         client = TestClient(app)
 
@@ -111,7 +111,8 @@ class TestInspectEndpoint:
             "path": "/nonexistent/path/that/does/not/exist",
         })
 
-        assert response.status_code == 404
+        # Absolute paths are rejected by contain_path (400), not 404
+        assert response.status_code == 400
 
 
 class TestPlanEndpoint:

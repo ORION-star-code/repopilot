@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     default_test_command: list[str] = Field(
         default_factory=lambda: ["python", "-m", "pytest", "-q"]
     )
+    workspace_root: str = "."
 
     @property
     def execution_mode(self) -> ExecutionMode:
